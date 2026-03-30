@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit3, 
-  Trash2, 
-  MoreVertical,
-  MinusCircle,
-  PlusCircle,
-  Shapes,
-  Maximize2,
-  Settings2,
-  Box
-} from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { envelopeService, stockService } from '../services/api';
 import { Button } from '../components/ui/Button';
@@ -20,248 +7,231 @@ import { Card } from '../components/ui/Card';
 import { Table, TableRow, TableCell } from '../components/ui/Table';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { cn } from '../utils/cn';
 
 export const Inventory = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState(null);
-  const [stockFormData, setStockFormData] = useState({ quantity: 0, type: 'IN' });
+  const [showAddStockModal, setShowAddStockModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [quantity, setQuantity] = useState('');
+  const [stockAction, setStockAction] = useState('IN');
 
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await envelopeService.getAll({ 
-        search: searchTerm, 
-        materialType: selectedType 
-      });
-      setItems(res.data);
+      const res = await envelopeService.getAll({ search: searchTerm });
+      setItems(res.data || []);
     } catch (err) {
-      toast.error('Inventory failure. Contact Administrator.');
+      toast.error('Failed to load inventory');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const timer = setTimeout(fetchItems, 500);
+    const timer = setTimeout(fetchItems, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm, selectedType]);
+  }, [searchTerm]);
 
-  const handleStockAction = (item, type) => {
-    setCurrentProduct(item);
-    setStockFormData({ quantity: 0, type });
-    setShowStockModal(true);
-  };
+  const handleAddStock = async () => {
+    if (!quantity || quantity <= 0) {
+      toast.error('Enter a valid quantity');
+      return;
+    }
 
-  const submitStock = async (e) => {
-    e.preventDefault();
     try {
-      const payload = { 
-        envelopeId: currentProduct._id, 
-        quantity: Number(stockFormData.quantity) 
+      const payload = {
+        envelopeId: selectedItem._id,
+        quantity: Number(quantity)
       };
-      if (stockFormData.type === 'IN') await stockService.recordIn(payload);
-      else await stockService.recordOut(payload);
-      
-      toast.success('Inventory state adjusted successfully.');
-      setShowStockModal(false);
+
+      if (stockAction === 'IN') {
+        await stockService.recordIn(payload);
+      } else {
+        await stockService.recordOut(payload);
+      }
+
+      toast.success(`Stock ${stockAction === 'IN' ? 'added' : 'removed'} successfully`);
+      setShowAddStockModal(false);
+      setQuantity('');
       fetchItems();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Operation aborted.');
+      toast.error(err.response?.data?.message || 'Operation failed');
     }
   };
 
   return (
-    <div className="space-y-10 animate-in">
-      {/* Page Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-8 bg-white dark:bg-surface-900 p-10 rounded-4xl border border-surface-200 dark:border-surface-800 shadow-2xl shadow-indigo-500/5">
-        <div className="flex gap-6 items-center">
-           <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/30 rotate-3 transition-transform hover:rotate-0 duration-500">
-              <Box className="w-8 h-8" />
-           </div>
-           <div>
-              <h1 className="text-4xl font-black tracking-tighter text-surface-900 dark:text-white leading-none mb-2">Central Repository</h1>
-              <p className="text-surface-500 dark:text-surface-400 font-bold uppercase tracking-widest text-[10px]">Real-Time Logistics Control Unit</p>
-           </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Inventory Management</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Manage product stock and track inventory levels</p>
         </div>
-        <Button 
-          icon={Plus} 
-          size="lg" 
-          onClick={() => { setShowAddModal(true); setCurrentProduct(null); }}
-          className="shadow-2xl translate-y-[-2px] hover:translate-y-[-4px]"
-        >
-          Inject New Unit
+        <Button icon={Plus} onClick={() => { setStockAction('IN'); setShowAddStockModal(true); }}>
+          Add Stock
         </Button>
-      </header>
+      </div>
 
-      {/* Control Panel (Search/Filters) */}
-      <Card className="flex flex-col md:flex-row gap-6 p-6 border-dashed bg-surface-50/50 dark:bg-surface-800/20">
-         <div className="flex-1">
-            <Input 
-               icon={Search} 
-               placeholder="Identify unit by code or dimension..." 
-               value={searchTerm} 
-               onChange={(e) => setSearchTerm(e.target.value)}
-            />
-         </div>
-         <div className="md:w-64 flex items-center gap-4">
-            <div className="relative w-full group">
-               <Shapes className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500 group-focus-within:text-indigo-600 transition-colors pointer-events-none" />
-               <select 
-                  className="w-full pl-12 pr-6 py-4 bg-white dark:bg-surface-800 border-[1.5px] border-surface-100 dark:border-surface-700 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none appearance-none"
-                  value={selectedType}
-                  onChange={(e) => setSelectedType(e.target.value)}
-               >
-                 <option value="">Global Filter</option>
-                 <option value="Cloth">Cloth Grade</option>
-                 <option value="Maplitho">Maplitho Grade</option>
-                 <option value="Buff">Buff Grade</option>
-                 <option value="Kraft">Kraft Grade</option>
-                 <option value="Vibothi">Vibothi Grade</option>
-               </select>
-            </div>
-         </div>
+      {/* Search Bar */}
+      <Card>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Search Products
+          </label>
+          <Input
+            icon={Search}
+            placeholder="Search by size, material type, or GSM..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Tip: Search works across size, material type, and GSM values
+          </p>
+        </div>
       </Card>
 
-      {/* Master Data Table */}
-      <Table 
-         headers={['Unit Identification', 'Logistics Specifications', 'Financial Value', 'Current Load', 'Control Actions']} 
-         loading={loading}
-         emptyState="Zero units found in selected sectors."
-      >
-        {items.map((item) => (
-          <TableRow key={item._id}>
-            <TableCell>
-              <div className="flex flex-col">
-                 <span className="text-xl font-black tracking-tight">{item.size}</span>
-                 <span className="text-indigo-600 dark:text-indigo-400 font-black text-[10px] uppercase tracking-widest">{item.materialType} Sector</span>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex flex-col font-bold">
-                 <span className="text-surface-700 dark:text-surface-300">{item.gsm} GSM Rating</span>
-                 <span className="text-surface-400 text-xs italic">{item.color || 'Standard Spectrum'}</span>
-              </div>
-            </TableCell>
-            <TableCell>
-               <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl inline-block border border-indigo-100 dark:border-indigo-800">
-                  <span className="text-lg font-black text-indigo-600">₹{item.price.toFixed(2)}</span>
-               </div>
-            </TableCell>
-            <TableCell>
-               <div className="flex flex-col gap-1.5 w-32">
-                  <div className="flex justify-between text-[10px] uppercase font-black tracking-widest">
-                     <span className={item.quantity < 1000 ? 'text-rose-500' : 'text-emerald-500'}>Status</span>
-                     <span className="text-surface-400">{item.quantity.toLocaleString()}</span>
-                  </div>
-                  <div className="h-2 w-full bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
-                     <div 
-                        className={cn("h-full transition-all duration-1000", item.quantity < 1000 ? 'bg-rose-500' : 'bg-indigo-600')}
-                        style={{ width: `${Math.min(100, (item.quantity / 5000) * 100)}%` }}
-                     />
-                  </div>
-               </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex items-center gap-3">
-                <button 
-                   onClick={() => handleStockAction(item, 'IN')}
-                   className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-2xl transition-all shadow-sm hover:shadow-emerald-500/20 active:scale-90"
-                   title="Adjust IN"
-                >
-                  <PlusCircle className="w-5 h-5" />
-                </button>
-                <button 
-                   onClick={() => handleStockAction(item, 'OUT')}
-                   className="p-3 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-2xl transition-all shadow-sm hover:shadow-rose-500/20 active:scale-90"
-                   title="Adjust OUT"
-                >
-                  <MinusCircle className="w-5 h-5" />
-                </button>
-                <Button variant="ghost" className="p-3" icon={Settings2}></Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </Table>
+      {/* Stock Status Legend */}
+      <div className="flex flex-wrap gap-4 px-2">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-red-600"></div>
+          <span className="text-xs text-gray-600 dark:text-gray-400">Low Stock (&lt;50)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+          <span className="text-xs text-gray-600 dark:text-gray-400">Medium Stock (50-200)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-green-600"></div>
+          <span className="text-xs text-gray-600 dark:text-gray-400">Healthy Stock (&gt;200)</span>
+        </div>
+      </div>
 
-      {/* Add Modal */}
-      <Modal 
-         isOpen={showAddModal} 
-         onClose={() => setShowAddModal(false)}
-         title="Unit Injection Protocol"
-      >
-         <form className="grid grid-cols-1 md:grid-cols-2 gap-8" onSubmit={async (e) => {
-            e.preventDefault();
-            const data = Object.fromEntries(new FormData(e.target).entries());
-            try {
-              await envelopeService.create(data);
-              toast.success('Unit synchronized successfully.');
-              setShowAddModal(false);
-              fetchItems();
-            } catch (err) {
-              toast.error('System validation failed.');
+      {/* Inventory Table */}
+
+      {/* Inventory Table */}
+      <Card>
+        <Table
+          headers={['Size', 'Material Type', 'GSM', 'Price', 'Quantity', 'Status', 'Actions']}
+          loading={loading}
+          emptyState="No items found"
+        >
+          {items.map((item) => {
+            const qty = item.quantity;
+            let statusColor = 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950';
+            let statusText = 'Healthy';
+            let statusDot = 'bg-green-600';
+            
+            if (qty < 50) {
+              statusColor = 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950';
+              statusText = 'Low Stock';
+              statusDot = 'bg-red-600';
+            } else if (qty >= 50 && qty <= 200) {
+              statusColor = 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950';
+              statusText = 'Medium';
+              statusDot = 'bg-yellow-500';
             }
-         }}>
-           <Input label="Spatial Code (Size)" name="size" required placeholder="e.g. 12x15" icon={Maximize2} />
-           <div className="space-y-2">
-              <label className="text-sm font-bold text-surface-500 uppercase tracking-widest px-1">Material Classification</label>
-              <select name="materialType" required className="w-full p-4 bg-surface-50 dark:bg-surface-800 rounded-2xl border-[1.5px] border-surface-100 dark:border-surface-700 font-bold focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 outline-none">
-                <option value="Cloth">Cloth</option>
-                <option value="Maplitho">Maplitho</option>
-                <option value="Buff">Buff</option>
-                <option value="Kraft">Kraft</option>
-                <option value="Vibothi">Vibothi</option>
-              </select>
-           </div>
-           <Input label="Density Rating (GSM)" name="gsm" type="number" placeholder="100" />
-           <Input label="Financial Valuation (INR)" name="price" type="number" step="0.01" required placeholder="5.25" />
-           <div className="md:col-span-2">
-              <Input label="Spectral Property (Color)" name="color" placeholder="Reflective White..." />
-           </div>
-           <div className="md:col-span-2 flex gap-4 pt-8">
-             <Button type="submit" size="lg" className="flex-1">Deploy New Unit</Button>
-             <Button type="button" size="lg" variant="secondary" onClick={() => setShowAddModal(false)}>Abort Protocol</Button>
-           </div>
-         </form>
-      </Modal>
 
-      {/* Stock Adjustment Modal */}
-      <Modal 
-         isOpen={showStockModal} 
-         onClose={() => setShowStockModal(false)}
-         title={`Adjusting Logistics (${stockFormData.type})`}
+            return (
+              <TableRow key={item._id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                <TableCell className="font-semibold text-gray-900 dark:text-white">{item.size}</TableCell>
+                <TableCell className="text-gray-600 dark:text-gray-400">{item.materialType}</TableCell>
+                <TableCell className="text-gray-600 dark:text-gray-400">{item.gsm}</TableCell>
+                <TableCell className="font-semibold text-gray-900 dark:text-white">₹{item.price}</TableCell>
+                <TableCell>
+                  <div className="font-semibold text-lg text-gray-900 dark:text-white">
+                    {qty.toLocaleString()}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                    <div className={`w-2 h-2 rounded-full ${statusDot}`}></div>
+                    {statusText}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setStockAction('IN');
+                        setShowAddStockModal(true);
+                      }}
+                      className="px-3 py-1.5 text-sm bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 rounded-lg hover:bg-green-200 dark:hover:bg-green-800 transition-colors font-medium"
+                    >
+                      + Add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setStockAction('OUT');
+                        setShowAddStockModal(true);
+                      }}
+                      className="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition-colors font-medium"
+                    >
+                      - Remove
+                    </button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </Table>
+      </Card>
+
+      {/* Add Stock Modal */}
+      <Modal
+        isOpen={showAddStockModal}
+        onClose={() => setShowAddStockModal(false)}
+        title={`${stockAction === 'IN' ? 'Add' : 'Remove'} Stock`}
+        size="md"
       >
-         <div className="mb-10 text-center">
-            <h4 className="text-3xl font-black text-surface-900 border-b-4 border-indigo-600 inline-block pb-2 mb-2">{currentProduct?.size}</h4>
-            <p className="text-surface-400 font-black tracking-widest text-xs uppercase">{currentProduct?.materialType} SECTOR | ACTIVE LOCK</p>
-         </div>
-         <form onSubmit={submitStock} className="space-y-8">
-           <Input 
-              label="Volume Adjustment Quota" 
-              type="number" 
-              required
-              autoFocus
-              className="text-3xl font-black py-8 text-center"
-              value={stockFormData.quantity}
-              onChange={e => setStockFormData({...stockFormData, quantity: e.target.value})}
-           />
-           <div className="flex flex-col gap-4">
-              <Button 
-                 type="submit" 
-                 size="lg"
-                 className={stockFormData.type === 'IN' ? 'bg-emerald-600 shadow-emerald-500/30' : 'bg-rose-600 shadow-rose-500/30'}
-              >
-                 Authorize {stockFormData.type} Load
-              </Button>
-              <Button variant="secondary" onClick={() => setShowStockModal(false)}>Negative Authorization</Button>
-           </div>
-         </form>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Product: <span className="font-bold">{selectedItem?.size} - {selectedItem?.materialType}</span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Current Quantity: <span className="font-bold text-lg">{selectedItem?.quantity}</span>
+            </label>
+          </div>
+
+          <Input
+            label="Quantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            placeholder="Enter quantity"
+          />
+
+          <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              New quantity will be: <span className="font-bold">
+                {selectedItem ? (stockAction === 'IN' ? selectedItem.quantity + (Number(quantity) || 0) : Math.max(0, selectedItem.quantity - (Number(quantity) || 0))) : 0}
+              </span>
+            </p>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4">
+            <button
+              onClick={() => setShowAddStockModal(false)}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddStock}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

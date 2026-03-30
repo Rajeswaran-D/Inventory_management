@@ -1,3 +1,6 @@
+import { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 export const Modal = ({ 
@@ -31,32 +34,34 @@ export const Modal = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-surface-950/40 backdrop-blur-md"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             className={cn(
-              "relative w-full bg-white dark:bg-surface-900 rounded-4xl border border-surface-200 dark:border-surface-800 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden",
+              "relative w-full bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden",
               sizes[size],
               className
             )}
           >
-            <div className="p-8 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between bg-surface-50 dark:bg-surface-800/50">
-               <div>
-                  <h2 className="text-2xl font-black text-surface-900 dark:text-white uppercase tracking-tight">{title}</h2>
-               </div>
-               <button 
-                  onClick={onClose}
-                  className="p-3 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-2xl transition-all active:scale-90"
-               >
-                  <X className="w-6 h-6" />
-               </button>
+            <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-800 sticky top-0">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+                {title}
+              </h2>
+              <button 
+                onClick={onClose}
+                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             
-            <div className="p-8 overflow-y-auto custom-scrollbar">
-               {children}
+            <div className="p-6 overflow-y-auto flex-1">
+              {children}
             </div>
           </motion.div>
         </div>

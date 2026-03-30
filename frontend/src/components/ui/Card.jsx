@@ -7,16 +7,15 @@ export const Card = ({
   ...props 
 }) => {
   const variants = {
-    white: 'bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 shadow-xl shadow-surface-300/10 dark:shadow-black/20',
-    indigo: 'bg-[#4F46E5] text-white shadow-2xl shadow-indigo-500/30 border-none',
-    secondary: 'bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-sm',
-    transparent: 'bg-transparent border border-surface-200 dark:border-surface-800 shadow-none hover:shadow-xl transition-all duration-300',
+    white: 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md',
+    highlight: 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 shadow-sm hover:shadow-md',
+    danger: 'bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 shadow-sm hover:shadow-md',
   };
 
   return (
     <div 
       className={cn(
-        "rounded-4xl p-8 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl",
+        "rounded-lg p-6 transition-all duration-300",
         variants[variant],
         className
       )}
@@ -28,13 +27,13 @@ export const Card = ({
 };
 
 export const CardHeader = ({ children, className }) => (
-  <div className={cn("mb-6 flex items-center justify-between", className)}>
+  <div className={cn("mb-4 flex items-center justify-between", className)}>
     {children}
   </div>
 );
 
 export const CardTitle = ({ children, className }) => (
-  <h3 className={cn("text-xl font-bold tracking-tight text-surface-900 dark:text-white uppercase", className)}>
+  <h3 className={cn("text-lg font-bold text-gray-900 dark:text-white tracking-tight", className)}>
     {children}
   </h3>
 );

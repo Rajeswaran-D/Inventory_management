@@ -8,28 +8,28 @@ export const Input = ({
   ...props 
 }) => {
   return (
-    <div className="space-y-2 group">
+    <div className="space-y-2">
       {label && (
-        <label className="text-sm font-bold text-surface-500 uppercase tracking-widest px-1 transition-colors group-focus-within:text-indigo-600">
-           {label}
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 tracking-tight">
+          {label}
         </label>
       )}
-      <div className="relative overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-shadow group-focus-within:shadow-xl group-focus-within:shadow-indigo-500/10">
+      <div className="relative">
         {Icon && (
-          <Icon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400 group-focus-within:text-indigo-600 transition-colors" />
+          <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500 pointer-events-none" />
         )}
         <input 
           className={cn(
-            "w-full bg-surface-50 dark:bg-surface-800 border-[1.5px] border-surface-100 dark:border-surface-700 py-4 px-6 rounded-2xl text-surface-900 dark:text-white placeholder:text-surface-400 focus:bg-white dark:focus:bg-surface-700 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/10 transition-all outline-none",
-            Icon ? "pl-12" : "px-6",
-            error ? "border-rose-500 bg-rose-50/50" : "hover:border-surface-300",
+            "w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:border-transparent outline-none transition-all duration-200",
+            Icon ? "pl-10" : "",
+            error ? "border-red-500 focus:ring-red-500" : "",
             className
           )}
           {...props}
         />
         {error && (
-          <p className="mt-1.5 text-xs font-bold text-rose-500 px-1 italic">
-             {error}
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+            {error}
           </p>
         )}
       </div>

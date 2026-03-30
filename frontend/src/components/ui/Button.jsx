@@ -10,38 +10,41 @@ export const Button = ({
   ...props 
 }) => {
   const variants = {
-    primary: 'bg-[#4F46E5] text-white hover:bg-[#4338CA] shadow-primary-500/20',
-    secondary: 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-700 shadow-sm',
-    danger: 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/20',
-    success: 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20',
-    ghost: 'bg-transparent text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800',
+    primary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 active:scale-95 shadow-sm hover:shadow-md',
+    secondary: 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 shadow-sm hover:shadow-md',
+    danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 active:scale-95 shadow-sm hover:shadow-md',
+    success: 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800 active:scale-95 shadow-sm hover:shadow-md',
+    ghost: 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
   };
 
   const sizes = {
-    sm: 'px-3 py-1.5 text-xs font-semibold',
-    md: 'px-5 py-2.5 text-sm font-bold',
-    lg: 'px-8 py-4 text-base font-black',
+    sm: 'px-3 py-1.5 text-xs font-medium rounded-md',
+    md: 'px-4 py-2 text-sm font-medium rounded-lg',
+    lg: 'px-6 py-3 text-base font-medium rounded-lg',
   };
 
   return (
     <button 
       className={cn(
-        "relative rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 overflow-hidden active:scale-95 disabled:opacity-50 disabled:pointer-events-none group shadow-lg",
+        "inline-flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
         variants[variant],
         sizes[size],
         className
       )}
+      disabled={isLoading || props.disabled}
       {...props}
     >
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-inherit">
-           <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        </div>
+      {isLoading ? (
+        <>
+          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span>Loading...</span>
+        </>
+      ) : (
+        <>
+          {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+          {children}
+        </>
       )}
-      <div className={cn("flex items-center gap-2", isLoading ? "opacity-0" : "opacity-100")}>
-        {Icon && <Icon className={cn("w-5 h-5", children ? "" : "mx-auto")} />}
-        {children}
-      </div>
     </button>
   );
 };

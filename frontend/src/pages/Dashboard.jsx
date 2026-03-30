@@ -1,268 +1,252 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  Package, 
-  AlertTriangle, 
-  ShoppingCart,
-  ArrowUpRight,
-  ArrowDownRight,
-  Boxes,
-  Zap,
-  Activity,
-  Calendar
-} from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-import { Line, Pie, Bar } from 'react-chartjs-2';
-import { saleService } from '../services/api';
-import { StatCard } from '../components/ui/StatCard';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+import { TrendingUp, Package, AlertTriangle, ShoppingCart, ArrowUp, ArrowDown } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { saleService, envelopeService } from '../services/api';
+import { Card, CardTitle, CardContent } from '../components/ui/Card';
+import { DailySummary } from '../components/ui/DailySummary';
+import { LowStockModal } from '../components/ui/LowStockModal';
 
 export const Dashboard = () => {
-  const [stats, setStats] = useState({ todaySales: { total: 0, count: 0 }, totalStock: { total: 0 }, lowStockAlerts: [] });
-  const [topSelling, setTopSelling] = useState([]);
+  const [stats, setStats] = useState({
+    totalStock: 0,
+    todaySales: 0,
+    totalRevenue: 0,
+    lowStockCount: 0,
+    previousRevenue: 0,
+    previousSales: 0
+  });
   const [loading, setLoading] = useState(true);
+  const [showLowStockModal, setShowLowStockModal] = useState(false);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const [statsRes, topRes] = await Promise.all([
-          saleService.getDashboardStats(),
-          saleService.getTopSelling()
-        ]);
-        setStats(statsRes.data);
-        setTopSelling(topRes.data);
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchDashboardData();
   }, []);
 
-  const lineChartData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [
-      {
-        label: 'Sales Revenue',
-        data: [12000, 19000, 15000, 22000, 30000, 25000, 32000],
-        fill: true,
-        borderColor: '#4F46E5',
-        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-        tension: 0.4,
-        pointRadius: 6,
-        pointBackgroundColor: '#4F46E5',
-        pointHoverRadius: 8,
-      },
-    ],
-  };
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const today = new Date();
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      
+      const todayStr = today.toISOString().split('T')[0];
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-  const pieChartData = {
-    labels: topSelling.map(item => item.size) || ['No Data'],
-    datasets: [
-      {
-        data: topSelling.map(item => item.totalQty) || [100],
-        backgroundColor: [
-          '#4F46E5',
-          '#10B981',
-          '#F59E0B',
-          '#EF4444',
-          '#8B5CF6',
-        ],
-        borderWidth: 0,
-        hoverOffset: 15,
-      },
-    ],
-  };
+      // Fetch today's sales
+      const todayRes = await saleService.getAll({
+        startDate: todayStr,
+        endDate: todayStr
+      });
+      
+      // Fetch yesterday's sales for comparison
+      const yesterdayRes = await saleService.getAll({
+        startDate: yesterdayStr,
+        endDate: yesterdayStr
+      });
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: '#1E293B',
-        padding: 16,
-        titleFont: { size: 14, weight: 'bold' },
-        bodyFont: { size: 14 },
-        cornerRadius: 12,
-        displayColors: false,
-      }
-    },
-    scales: {
-      x: { grid: { display: false }, ticks: { font: { weight: 'bold', size: 12 } } },
-      y: { grid: { borderDash: [5, 5], color: '#E2E8F0' }, ticks: { font: { weight: 'bold', size: 12 } } }
+      const envelopesRes = await envelopeService.getAll({});
+      
+      const todaySales = todayRes.data || [];
+      const yesterdaySales = yesterdayRes.data || [];
+      
+      const lowStock = envelopesRes.data ? envelopesRes.data.filter(e => e.quantity < 50).length : 0;
+      const totalStock = envelopesRes.data ? envelopesRes.data.reduce((sum, e) => sum + (e.quantity || 0), 0) : 0;
+
+      const todayRevenue = todaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+      const yesterdayRevenue = yesterdaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+
+      setStats({
+        totalStock,
+        todaySales: todaySales.length,
+        totalRevenue: todayRevenue,
+        lowStockCount: lowStock,
+        previousRevenue: yesterdayRevenue,
+        previousSales: yesterdaySales.length
+      });
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      toast.error('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] animate-in">
-       <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
-       <p className="text-surface-400 font-bold uppercase tracking-widest text-sm">Synchronizing Data...</p>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate trend percentages
+  const revenueTrend = stats.previousRevenue > 0 
+    ? (((stats.totalRevenue - stats.previousRevenue) / stats.previousRevenue) * 100).toFixed(1)
+    : 0;
+
+  const salesTrend = stats.previousSales > 0 
+    ? (((stats.todaySales - stats.previousSales) / stats.previousSales) * 100).toFixed(1)
+    : 0;
+
+  const metrics = [
+    {
+      title: 'Today\'s Sales',
+      value: stats.todaySales,
+      icon: ShoppingCart,
+      color: 'blue',
+      trend: salesTrend > 0 ? 'up' : salesTrend < 0 ? 'down' : null,
+      trendValue: Math.abs(salesTrend)
+    },
+    {
+      title: 'Total Revenue',
+      value: `₹${stats.totalRevenue.toLocaleString()}`,
+      icon: TrendingUp,
+      color: 'green',
+      trend: revenueTrend > 0 ? 'up' : revenueTrend < 0 ? 'down' : null,
+      trendValue: Math.abs(revenueTrend)
+    },
+    {
+      title: 'Total Stock',
+      value: stats.totalStock.toLocaleString(),
+      icon: Package,
+      color: 'purple',
+      trend: null
+    },
+    {
+      title: 'Low Stock Items',
+      value: stats.lowStockCount,
+      icon: AlertTriangle,
+      color: 'red',
+      interactive: true,
+      onClick: () => setShowLowStockModal(true)
+    }
+  ];
 
   return (
-    <div className="space-y-10 animate-in pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white dark:bg-surface-900 p-8 rounded-4xl border border-surface-200 dark:border-surface-800 shadow-xl shadow-surface-300/5">
-        <div className="flex flex-col gap-2">
-           <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30">
-                 <Zap className="w-6 h-6" />
-              </div>
-              <h1 className="text-4xl font-black tracking-tight text-surface-900 dark:text-white leading-tight">Executive Control</h1>
-           </div>
-           <p className="text-surface-500 dark:text-surface-400 font-medium ml-12">Performance overview for Swami Envelope Manufacturing</p>
-        </div>
-        <div className="flex items-center gap-4 ml-auto">
-           <div className="flex items-center gap-2 bg-surface-50 dark:bg-surface-800 px-6 py-4 rounded-3xl border border-surface-100 dark:border-surface-700 shadow-inner">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              <span className="font-black text-sm text-surface-700 dark:text-surface-300">Mar 30, 2026</span>
-           </div>
-           <Button variant="ghost" icon={Activity}>Refresh Feed</Button>
-        </div>
-      </header>
+    <div className="space-y-8">
+      <LowStockModal isOpen={showLowStockModal} onClose={() => setShowLowStockModal(false)} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <StatCard 
-          title="Daily Revenue" 
-          value={`₹${stats.todaySales.total.toLocaleString()}`} 
-          icon={TrendingUp} 
-          trend="up" 
-          trendValue="24.8" 
-          color="indigo" 
-        />
-        <StatCard 
-          title="Warehouse Stock" 
-          value={stats.totalStock.total.toLocaleString()} 
-          icon={Boxes} 
-          trend="down" 
-          trendValue="3.2" 
-          color="amber" 
-        />
-        <StatCard 
-          title="Transactions" 
-          value={stats.todaySales.count} 
-          icon={ShoppingCart} 
-          trend="up" 
-          trendValue="18.5" 
-          color="emerald" 
-        />
-        <StatCard 
-          title="Alert Threshold" 
-          value={stats.lowStockAlerts.length} 
-          icon={AlertTriangle} 
-          color="rose" 
-        />
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Welcome back! Here's your business overview.</p>
+        </div>
+        <button
+          onClick={fetchDashboardData}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:scale-95 transition-all font-medium"
+        >
+          Refresh
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-               <Activity className="w-5 h-5 text-indigo-600" />
-               Sales Trajectory
-            </CardTitle>
-            <Button variant="ghost" size="sm">Download CSV</Button>
-          </CardHeader>
-          <div className="h-[400px] mt-4">
-            <Line data={lineChartData} options={chartOptions} />
-          </div>
-        </Card>
+      {/* Daily Summary Section */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-4">Today's Performance</h2>
+        <DailySummary refreshTrigger={loading} />
+      </div>
 
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-               <Package className="w-5 h-5 text-indigo-600" />
-               Inventory Core Distribution
-            </CardTitle>
-          </CardHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4 flex-1 items-center">
-             <div className="h-[300px]">
-                <Pie data={pieChartData} options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }} />
-             </div>
-             <div className="space-y-4">
-                {topSelling.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-800 rounded-3xl border border-surface-100 dark:border-surface-700 transition-all hover:scale-105">
-                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: pieChartData.datasets[0].backgroundColor[i % 5] }} />
-                        <span className="text-sm font-bold text-surface-700 dark:text-surface-300">{item.size} {item.materialType}</span>
-                     </div>
-                     <span className="font-black text-indigo-600">{((item.totalQty / topSelling.reduce((s, x) => s + x.totalQty, 0)) * 100).toFixed(1)}%</span>
+      {/* Key Metrics */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-4">Key Metrics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {metrics.map((metric) => {
+            const Icon = metric.icon;
+            const colorClasses = {
+              blue: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
+              green: 'bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400',
+              purple: 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400',
+              red: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
+            };
+
+            return (
+              <Card 
+                key={metric.title} 
+                className={`bg-white dark:bg-gray-900 hover:shadow-lg transition-all duration-200 ${metric.interactive ? 'cursor-pointer' : ''}`}
+                onClick={metric.onClick}
+              >
+                <CardContent>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className={`p-3 rounded-lg ${colorClasses[metric.color]}`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    {metric.trend && (
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
+                        metric.trend === 'up' 
+                          ? 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300' 
+                          : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
+                      }`}>
+                        {metric.trend === 'up' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                        {metric.trendValue}%
+                      </div>
+                    )}
                   </div>
-                ))}
-             </div>
-          </div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+                    {metric.title}
+                  </p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white break-words">
+                    {metric.value}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Quick Links */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 hover:shadow-lg transition-shadow">
+          <CardContent>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Quick Actions</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Access frequently used features
+            </p>
+            <div className="space-y-2">
+              <a href="/billing" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition-colors">
+                ➕ Create New Sale
+              </a>
+              <a href="/inventory" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition-colors">
+                📦 View Inventory
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 hover:shadow-lg transition-shadow">
+          <CardContent>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Stock Status</h3>
+            <div className="space-y-2">
+              <div>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {stats.lowStockCount}
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Products below 50 units</p>
+              </div>
+              <button
+                onClick={() => setShowLowStockModal(true)}
+                className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs font-medium transition-colors"
+              >
+                View Details
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 hover:shadow-lg transition-shadow">
+          <CardContent>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Reports</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Generate and analyze sales reports
+            </p>
+            <a href="/reports" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium text-center transition-colors">
+              📊 View Reports
+            </a>
+          </CardContent>
         </Card>
       </div>
-      
-      {/* Low Stock Alerts (Modern ERP Table Style) */}
-      <Card>
-        <CardHeader>
-           <CardTitle className="flex items-center gap-2 text-rose-500">
-              <AlertTriangle className="w-5 h-5" />
-              Critical Replenishment Required
-           </CardTitle>
-        </CardHeader>
-        <div className="space-y-4">
-           {stats.lowStockAlerts.length === 0 ? (
-             <div className="py-20 flex flex-col items-center justify-center text-surface-400 bg-surface-50/50 dark:bg-surface-800/20 rounded-4xl border-2 border-dashed border-surface-200 dark:border-surface-800">
-                <Boxes className="w-16 h-16 opacity-20 mb-4" />
-                <p className="font-bold uppercase tracking-widest text-xs">Warehouse Harmony Achieved</p>
-             </div>
-           ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stats.lowStockAlerts.map((item) => (
-                   <div key={item._id} className="p-6 bg-white dark:bg-surface-800/40 rounded-3xl border border-rose-100 dark:border-rose-900/20 hover:shadow-xl hover:shadow-rose-500/5 transition-all group overflow-hidden relative">
-                      <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.07] transition-all rotate-12 scale-150">
-                         <AlertTriangle className="w-32 h-32 text-rose-500" />
-                      </div>
-                      <div className="flex justify-between items-start mb-4 relative z-10">
-                         <div>
-                            <h4 className="font-black text-lg text-surface-900 dark:text-white leading-tight">{item.size} {item.materialType}</h4>
-                            <p className="text-surface-400 font-bold text-xs uppercase tracking-widest mt-1">{item.gsm} GSM | {item.color}</p>
-                         </div>
-                         <div className="px-3 py-1 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-full font-black text-xs uppercase animate-pulse">Low</div>
-                      </div>
-                      <div className="flex items-end justify-between mt-8 relative z-10">
-                         <div className="space-y-1">
-                            <p className="text-[10px] uppercase font-black text-surface-400 tracking-widest">Active Stock</p>
-                            <p className="text-4xl font-black text-rose-600 tracking-tighter">{item.quantity.toLocaleString()}</p>
-                         </div>
-                         <Button size="sm" variant="ghost" className="text-rose-600 hover:bg-rose-50">Restock Now +</Button>
-                      </div>
-                   </div>
-                ))}
-             </div>
-           )}
-        </div>
-      </Card>
     </div>
   );
 };
