@@ -60,6 +60,7 @@ export const productService = {
   getAllVariants: (params) => api.get('/products/variants', { params }),
   getVariantById: (id) => api.get(`/products/variants/${id}`),
   createVariant: (data) => api.post('/products/variants', data),
+  updateVariant: (id, data) => api.put(`/products/variants/${id}`, data),
   deleteVariant: (id) => api.delete(`/products/variants/${id}`),
 
   // Dropdown data (for dynamic UI)
@@ -82,6 +83,12 @@ export const inventoryService = {
   updateStock: (id, quantity) => api.put(`/inventory/${id}/stock`, { quantity }),
   getLowStock: (threshold = 50) => api.get('/inventory/low-stock', { params: { threshold } }),
   getStockHistory: (params) => api.get('/inventory/history', { params }),
+  
+  // NEW: Stock in/out operations
+  addStock: (inventoryId, quantity, reason) => 
+    api.post(`/inventory/${inventoryId}/stock-in`, { quantity, reason }),
+  reduceStock: (inventoryId, quantity, reason) => 
+    api.post(`/inventory/${inventoryId}/stock-out`, { quantity, reason }),
 };
 
 export const pricingTierService = {

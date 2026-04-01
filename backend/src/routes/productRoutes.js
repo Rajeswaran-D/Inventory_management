@@ -39,7 +39,10 @@ router.get('/variants/:id', productController.getVariantById);
 // Create new variant
 router.post('/variants', productController.createVariant);
 
-// Delete variant (soft delete)
+// Update variant
+router.put('/variants/:id', productController.updateVariant);
+
+// Delete variant (with inventory cleanup)
 router.delete('/variants/:id', productController.deleteVariant);
 
 // ===== DROPDOWN DATA ROUTES (Dynamic UI Support) =====

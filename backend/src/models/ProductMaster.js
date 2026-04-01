@@ -6,8 +6,7 @@ const productMasterSchema = new mongoose.Schema({
     type: String, 
     required: true,
     unique: true,
-    trim: true,
-    enum: ['Maplitho', 'Buff', 'Kraft', 'Cloth Cover', 'Vibhoothi', 'Handmade Love', 'Premium Metallic']
+    trim: true
   },
 
   // Field requirements for this product type
@@ -49,6 +48,12 @@ const productMasterSchema = new mongoose.Schema({
   isActive: { 
     type: Boolean, 
     default: true 
+  },
+
+  // Flag to indicate if product was created manually via variant creation
+  isManualProduct: {
+    type: Boolean,
+    default: false
   },
 
   createdAt: { type: Date, default: Date.now },

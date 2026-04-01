@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Edit, Trash2, AlertCircle, Search } from 'lucide-react';
+import { RefreshCw, Edit, Trash2, AlertCircle, Search, Plus, Minus } from 'lucide-react';
 import { inventoryService } from '../services/api';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import useToast from '../hooks/useToast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { AddProductVariantModal } from '../components/ui/AddProductVariantModal';
+import { SmartStockUpdateModal } from '../components/ui/SmartStockUpdateModal';
 
 const Inventory = () => {
   const toast = useToast();
@@ -15,7 +17,10 @@ const Inventory = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [showStockUpdateModal, setShowStockUpdateModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [stockAction, setStockAction] = useState(null); // 'add' or 'reduce'
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [updateForm, setUpdateForm] = useState({ quantity: 0, price: 0 });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -197,6 +202,14 @@ const Inventory = () => {
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2">
           <button
+            onClick={() => setShowAddProductModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium transition-all shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            Add New Product
+          </button>
+
+          <button
             onClick={() => fetchInventory(true)}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50"
@@ -301,6 +314,29 @@ const Inventory = () => {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex gap-2 justify-center">
+                          {/* Smart Stock Buttons */}
+                          <button
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setStockAction('add');
+                              setShowStockUpdateModal(true);
+                            }}
+                            className="p-2 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold transition-colors flex items-center gap-1"
+                            title="Add Stock"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setStockAction('reduce');
+                              setShowStockUpdateModal(true);
+                            }}
+                            className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold transition-colors flex items-center gap-1"
+                            title="Reduce Stock"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => {
                               setSelectedProduct(product);
@@ -417,6 +453,33 @@ const Inventory = () => {
           setSelectedProduct(null);
         }}
       />
+
+      {/* Add Product Variant Modal */}
+      <AddProductVariantModal 
+        isOpen={showAddProductModal}
+        onClose={() => setShowAddProductModal(false)}
+        onProductAdded={() => {
+          setShowAddProductModal(false);
+          fetchInventory(false);
+        }}
+      />
+
+      {/* Smart Stock Update Modal */}
+      {selectedProduct && (
+        <SmartStockUpdateModal
+          isOpen={showStockUpdateModal}
+          onClose={() => {
+            setShowStockUpdateModal(false);
+            setSelectedProduct(null);
+          }}
+          inventoryItem={selectedProduct}
+          onStockUpdated={() => {
+            setShowStockUpdateModal(false);
+            setSelectedProduct(null);
+            fetchInventory(false);
+          }}
+        />
+      )}
     </div>
   );
 };

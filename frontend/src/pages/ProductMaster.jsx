@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, RefreshCw, Edit2 } from 'lucide-react';
 import { productService } from '../services/api';
 import useToast from '../hooks/useToast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { AddProductVariantModal } from '../components/ui/AddProductVariantModal';
+import { EditProductVariantModal } from '../components/ui/EditProductVariantModal';
+import { DeleteProductVariantModal } from '../components/ui/DeleteProductVariantModal';
 
 /**
  * PRODUCT MASTER PAGE
@@ -21,6 +24,12 @@ export const ProductMaster = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  
+  // New modal states for Edit & Delete
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedVariantForEdit, setSelectedVariantForEdit] = useState(null);
+  const [selectedVariantForDelete, setSelectedVariantForDelete] = useState(null);
 
   // Form state
   const [variantForm, setVariantForm] = useState({
@@ -273,25 +282,39 @@ export const ProductMaster = () => {
               {/* Variants List */}
               {product.variants && product.variants.length > 0 && (
                 <div className="border-t border-gray-200 p-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">Recent Variants:</p>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {product.variants.slice(0, 3).map(variant => (
-                      <div key={variant._id} className="text-xs flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <span className="text-gray-700 truncate flex-1">{variant.displayName}</span>
-                        <button
-                          onClick={() => {
-                            setSelectedProduct(variant);
-                            setShowDeleteConfirm(true);
-                          }}
-                          className="p-1 hover:bg-red-100 rounded transition-colors ml-2"
-                        >
-                          <Trash2 className="w-3 h-3 text-red-600" />
-                        </button>
+                  <p className="text-xs font-semibold text-gray-700 mb-2">Variants ({product.variants.length}):</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {product.variants.map(variant => (
+                      <div key={variant._id} className="text-xs flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded transition-colors">
+                        <span className="text-gray-700 truncate flex-1 font-medium">{variant.displayName}</span>
+                        <div className="flex gap-1 ml-2">
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => {
+                              setSelectedVariantForEdit(variant);
+                              setSelectedProduct(product);
+                              setShowEditModal(true);
+                            }}
+                            className="p-1.5 hover:bg-blue-100 rounded transition-colors text-blue-600"
+                            title="Edit variant"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => {
+                              setSelectedVariantForDelete(variant);
+                              setSelectedProduct(product);
+                              setShowDeleteModal(true);
+                            }}
+                            className="p-1.5 hover:bg-red-100 rounded transition-colors text-red-600"
+                            title="Delete variant"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
-                    {product.variants.length > 3 && (
-                      <p className="text-xs text-gray-500 p-2">+{product.variants.length - 3} more...</p>
-                    )}
                   </div>
                 </div>
               )}
@@ -309,94 +332,52 @@ export const ProductMaster = () => {
       )}
 
       {/* Add Variant Modal */}
-      {showAddVariant && selectedProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4">
-            <h2 className="text-xl font-bold text-gray-900">
-              Add Variant: {selectedProduct.name}
-            </h2>
+      <AddProductVariantModal
+        isOpen={showAddVariant}
+        onClose={() => {
+          setShowAddVariant(false);
+          setSelectedProduct(null);
+        }}
+        onProductAdded={() => fetchProducts(true)}
+      />
 
-            <div className="space-y-4">
-              {/* GSM */}
-              {selectedProduct.hasGSM && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    GSM *
-                  </label>
-                  <select
-                    value={variantForm.gsm}
-                    onChange={(e) => setVariantForm({ ...variantForm, gsm: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="">Select GSM</option>
-                    {selectedProduct.gsmOptions?.map(gsm => (
-                      <option key={gsm} value={gsm}>{gsm} GSM</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+      {/* Edit Variant Modal */}
+      <EditProductVariantModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedVariantForEdit(null);
+          setSelectedProduct(null);
+        }}
+        variant={selectedVariantForEdit}
+        product={selectedProduct}
+        onVariantUpdated={() => {
+          setShowEditModal(false);
+          setSelectedVariantForEdit(null);
+          setSelectedProduct(null);
+          fetchProducts(false);
+        }}
+      />
 
-              {/* Size */}
-              {selectedProduct.hasSize && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Size *
-                  </label>
-                  <select
-                    value={variantForm.size}
-                    onChange={(e) => setVariantForm({ ...variantForm, size: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="">Select Size</option>
-                    {selectedProduct.sizeOptions?.map(size => (
-                      <option key={size} value={size}>{size}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+      {/* Delete Variant Modal */}
+      <DeleteProductVariantModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setSelectedVariantForDelete(null);
+          setSelectedProduct(null);
+        }}
+        variant={selectedVariantForDelete}
+        product={selectedProduct}
+        onProductDeleted={() => {
+          setShowDeleteModal(false);
+          setSelectedVariantForDelete(null);
+          setSelectedProduct(null);
+          fetchProducts(false);
+        }}
+      />
 
-              {/* Color */}
-              {selectedProduct.hasColor && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Color
-                  </label>
-                  <select
-                    value={variantForm.color || ''}
-                    onChange={(e) => setVariantForm({ ...variantForm, color: e.target.value || null })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="">No Color</option>
-                    {selectedProduct.colorOptions?.map(color => (
-                      <option key={color} value={color}>{color}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
-              <button
-                onClick={() => setShowAddVariant(false)}
-                disabled={isSubmitting}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateVariant}
-                disabled={isSubmitting}
-                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition-colors disabled:opacity-50"
-              >
-                {isSubmitting ? 'Creating...' : 'Create Variant'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation */}
+      {/* Delete Confirmation (Legacy - can be removed) */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete Variant"

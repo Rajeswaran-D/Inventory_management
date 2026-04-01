@@ -47,6 +47,22 @@ router.put('/:inventoryId', inventoryController.updateInventory);
 router.delete('/:inventoryId', inventoryController.deleteInventory);
 
 // ============================================================================
+// STOCK IN/OUT OPERATIONS
+// ============================================================================
+
+/**
+ * POST /api/inventory/:inventoryId/stock-in
+ * Add quantity to inventory
+ */
+router.post('/:inventoryId/stock-in', inventoryController.addStock);
+
+/**
+ * POST /api/inventory/:inventoryId/stock-out
+ * Reduce quantity from inventory
+ */
+router.post('/:inventoryId/stock-out', inventoryController.reduceStock);
+
+// ============================================================================
 // BULK OPERATIONS
 // ============================================================================
 

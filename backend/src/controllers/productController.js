@@ -220,48 +220,67 @@ exports.getVariantById = async (req, res, next) => {
  * POST /api/products/variants
  * Create new product variant
  * CRITICAL: Auto-creates corresponding Inventory entry
+ * NOTE: Transactions removed (requires MongoDB replica set)
  */
 exports.createVariant = async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const { productId, gsm, size, color } = req.body;
+    const { productId, productName, gsm, size, color, isManualProduct } = req.body;
     
-    console.log(`📝 Creating variant for product: ${productId}`);
+    console.log(`📝 Creating variant: ${productName || productId}`);
 
-    // Validate product exists
-    const product = await ProductMaster.findById(productId).session(session);
-    if (!product) {
-      await session.abortTransaction();
-      return res.status(400).json({ message: 'Invalid product ID' });
+    let product;
+    let useProductId = productId;
+
+    // Handle manual product entry
+    if (isManualProduct && !productId) {
+      console.log(`📌 Manual product entry: ${productName}`);
+      
+      // Check if this manual product name already exists
+      product = await ProductMaster.findOne({ name: productName });
+      
+      if (!product) {
+        // Create new product master on the fly for manual entry
+        product = new ProductMaster({
+          name: productName,
+          hasGSM: !!gsm,
+          hasSize: !!size,
+          hasColor: !!color,
+          isManualProduct: true
+        });
+        await product.save();
+        console.log(`✅ Manual product created: ${product._id}`);
+      }
+      useProductId = product._id;
+    } else {
+      // Validate product exists for standard entry
+      product = await ProductMaster.findById(productId);
+      if (!product) {
+        return res.status(400).json({ message: 'Invalid product ID' });
+      }
     }
 
     // Validate required fields based on product type
     if (product.hasGSM && !gsm) {
-      await session.abortTransaction();
       return res.status(400).json({ message: `GSM is required for ${product.name}` });
     }
     if (product.hasSize && !size) {
-      await session.abortTransaction();
       return res.status(400).json({ message: `Size is required for ${product.name}` });
     }
 
     // Check for duplicate variant
-    let duplicateQuery = { productId };
+    let duplicateQuery = { productId: useProductId };
     if (product.hasGSM) duplicateQuery.gsm = gsm;
     if (product.hasSize) duplicateQuery.size = size;
     if (product.hasColor) duplicateQuery.color = color || null;
 
-    const existing = await ProductVariant.findOne(duplicateQuery).session(session);
+    const existing = await ProductVariant.findOne(duplicateQuery);
     if (existing) {
-      await session.abortTransaction();
       return res.status(400).json({ message: 'This variant already exists' });
     }
 
     // Create variant
     const variant = new ProductVariant({
-      productId,
+      productId: useProductId,
       gsm: product.hasGSM ? gsm : null,
       size: product.hasSize ? size : null,
       color: product.hasColor ? color : null,
@@ -269,60 +288,153 @@ exports.createVariant = async (req, res, next) => {
       hasGSM: product.hasGSM
     });
 
-    await variant.save({ session });
+    await variant.save();
     console.log(`✅ Variant created: ${variant._id} (${variant.displayName})`);
 
     // AUTO-CREATE corresponding Inventory entry
     const inventory = new Inventory({
       variantId: variant._id,
+      productName: product.name,
       quantity: 0,
       price: 0,
       minimumStockLevel: 50
     });
 
-    await inventory.save({ session });
+    await inventory.save();
     console.log(`✅ Inventory auto-created: ${inventory._id} for variant ${variant._id}`);
-
-    // Commit transaction
-    await session.commitTransaction();
 
     res.status(201).json({
       message: 'Variant and Inventory created successfully',
       variant: {...variant.toObject(), inventoryId: inventory._id}
     });
   } catch (err) {
-    await session.abortTransaction();
     console.error('❌ Error creating variant:', err.message);
     next(err);
-  } finally {
-    session.endSession();
+  }
+};
+
+/**
+ * PUT /api/products/variants/:id
+ * Update existing product variant
+ * CRITICAL: Updates variantData and corresponding inventory price
+ */
+exports.updateVariant = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { gsm, size, color, price } = req.body;
+
+    console.log(`✏️  Updating variant: ${id}`);
+
+    // Find variant
+    const variant = await ProductVariant.findById(id);
+    if (!variant) {
+      return res.status(404).json({ message: 'Variant not found' });
+    }
+
+    // Get product master to check constraints
+    const product = await ProductMaster.findById(variant.productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product master not found' });
+    }
+
+    // Check for duplicate (if size/gsm/color changed)
+    const updates = {};
+    if (gsm !== undefined && product.hasGSM) updates.gsm = gsm;
+    if (size !== undefined && product.hasSize) updates.size = size;
+    if (color !== undefined && product.hasColor) updates.color = color;
+
+    if (Object.keys(updates).length > 0) {
+      const duplicateQuery = { 
+        productId: variant.productId, 
+        _id: { $ne: id }, // Exclude current variant
+        ...updates 
+      };
+      
+      const existing = await ProductVariant.findOne(duplicateQuery);
+      if (existing) {
+        return res.status(400).json({ message: 'Another variant with these specs already exists' });
+      }
+    }
+
+    // Update variant
+    Object.assign(variant, updates);
+    await variant.save();
+
+    console.log(`  ✅ Variant updated: ${variant.displayName}`);
+
+    // Update inventory price if provided
+    if (price !== undefined && price >= 0) {
+      const inventory = await Inventory.findOneAndUpdate(
+        { variantId: id },
+        { price: parseFloat(price) },
+        { new: true }
+      );
+      console.log(`  ✅ Inventory price updated to ₹${price}`);
+    }
+
+    res.status(200).json({
+      message: 'Variant updated successfully',
+      variant
+    });
+  } catch (err) {
+    console.error('❌ Error updating variant:', err.message);
+    next(err);
   }
 };
 
 /**
  * DELETE /api/products/variants/:id
- * Soft delete variant
+ * Delete variant AND corresponding inventory entry
+ * CRITICAL: Also deletes if ProductMaster has no more variants
  */
 exports.deleteVariant = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { id } = req.params;
     console.log(`🗑️  Deleting variant: ${id}`);
 
-    const variant = await ProductVariant.findByIdAndUpdate(
-      id,
-      { isActive: false },
-      { new: true }
-    );
-
+    // Find variant
+    const variant = await ProductVariant.findById(id).session(session);
     if (!variant) {
+      await session.abortTransaction();
       return res.status(404).json({ message: 'Variant not found' });
     }
 
-    console.log(`✅ Variant deleted: ${id}`);
-    res.status(200).json({ message: 'Variant deleted successfully', variant });
+    // Delete inventory entry
+    const inventory = await Inventory.findOneAndDelete(
+      { variantId: id },
+      { session }
+    );
+    console.log(`  ✅ Inventory deleted: ${inventory?._id || 'N/A'}`);
+
+    // Delete variant
+    await ProductVariant.findByIdAndDelete(id, { session });
+    console.log(`  ✅ Variant deleted: ${id}`);
+
+    // Check if product master has any more active variants
+    const remainingVariants = await ProductVariant.countDocuments({
+      productId: variant.productId,
+      isActive: true
+    }).session(session);
+
+    console.log(`  📊 Remaining active variants for product: ${remainingVariants}`);
+
+    await session.commitTransaction();
+
+    res.status(200).json({
+      message: 'Variant and Inventory deleted successfully',
+      variant,
+      inventoryDeleted: !!inventory,
+      remainingVariants
+    });
   } catch (err) {
+    await session.abortTransaction();
     console.error('❌ Error deleting variant:', err.message);
     next(err);
+  } finally {
+    session.endSession();
   }
 };
 

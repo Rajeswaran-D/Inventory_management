@@ -350,4 +350,127 @@ exports.bulkUpdateInventory = async (req, res) => {
   }
 };
 
+// ============================================================================
+// STOCK IN/OUT OPERATIONS
+// ============================================================================
+
+/**
+ * POST /api/inventory/:inventoryId/stock-in
+ * Add quantity to inventory (stock in)
+ * Body: { quantity: number, reason?: string }
+ */
+exports.addStock = async (req, res) => {
+  try {
+    const { inventoryId } = req.params;
+    const { quantity, reason } = req.body;
+
+    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Quantity must be a positive number' 
+      });
+    }
+
+    const item = await Inventory.findById(inventoryId)
+      .populate({
+        path: 'variantId',
+        populate: { path: 'productId' }
+      });
+
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Inventory item not found' });
+    }
+
+    // Add quantity
+    const addQty = parseInt(quantity);
+    const oldQuantity = item.quantity;
+    item.quantity += addQty;
+    
+    await item.save();
+
+    console.log(`✅ Stock added: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (+${addQty})`);
+
+    res.status(200).json({
+      success: true,
+      message: `Added ${addQty} units`,
+      data: item,
+      changeLog: {
+        action: 'STOCK_IN',
+        oldQuantity,
+        newQuantity: item.quantity,
+        change: addQty,
+        reason: reason || 'Manual stock addition',
+        timestamp: new Date()
+      }
+    });
+  } catch (err) {
+    console.error('Error adding stock:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+/**
+ * POST /api/inventory/:inventoryId/stock-out
+ * Reduce quantity from inventory (stock out)
+ * Body: { quantity: number, reason?: string }
+ */
+exports.reduceStock = async (req, res) => {
+  try {
+    const { inventoryId } = req.params;
+    const { quantity, reason } = req.body;
+
+    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Quantity must be a positive number' 
+      });
+    }
+
+    const item = await Inventory.findById(inventoryId)
+      .populate({
+        path: 'variantId',
+        populate: { path: 'productId' }
+      });
+
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Inventory item not found' });
+    }
+
+    const reduceQty = parseInt(quantity);
+
+    // Validate enough stock available
+    if (item.quantity < reduceQty) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Not enough stock. Available: ${item.quantity}, Requested: ${reduceQty}` 
+      });
+    }
+
+    // Reduce quantity
+    const oldQuantity = item.quantity;
+    item.quantity -= reduceQty;
+    
+    await item.save();
+
+    console.log(`✅ Stock reduced: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (-${reduceQty})`);
+
+    res.status(200).json({
+      success: true,
+      message: `Reduced ${reduceQty} units`,
+      data: item,
+      changeLog: {
+        action: 'STOCK_OUT',
+        oldQuantity,
+        newQuantity: item.quantity,
+        change: -reduceQty,
+        reason: reason || 'Manual stock reduction',
+        timestamp: new Date()
+      }
+    });
+  } catch (err) {
+    console.error('Error reducing stock:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 module.exports = exports;
