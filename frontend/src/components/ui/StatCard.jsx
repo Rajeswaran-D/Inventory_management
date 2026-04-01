@@ -14,14 +14,42 @@ export const StatCard = ({
   icon: Icon, 
   trend, 
   trendValue, 
-  color = 'indigo' 
+  color = 'green' 
 }) => {
-  const colors = {
-    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 border-indigo-100 dark:border-indigo-800',
-    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800',
-    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400 border-rose-100 dark:border-rose-800',
-    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border-amber-100 dark:border-amber-800',
+  const getColorStyles = (color) => {
+    if (color === 'green') {
+      return {
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        color: 'var(--primary)',
+        borderColor: 'var(--primary)'
+      };
+    }
+    if (color === 'emerald') {
+      return {
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        color: 'var(--primary)',
+        borderColor: 'var(--primary)'
+      };
+    }
+    if (color === 'rose') {
+      return {
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        color: '#DC2626',
+        borderColor: '#DC2626'
+      };
+    }
+    if (color === 'amber') {
+      return {
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        color: '#F59E0B',
+        borderColor: '#F59E0B'
+      };
+    }
+    return {};
   };
+
+  const trendColor = trend === 'up' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+  const trendTextColor = trend === 'up' ? 'var(--primary)' : '#DC2626';
 
   return (
     <Card className="hover-card relative overflow-hidden group">
@@ -30,14 +58,21 @@ export const StatCard = ({
       </div>
 
       <div className="flex items-start justify-between mb-8 relative z-10">
-        <div className={cn("p-4 rounded-3xl border transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg shadow-indigo-500/10 shadow-current/10", colors[color])}>
+        <div 
+          className="p-4 rounded-3xl border transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg shadow-current/10"
+          style={getColorStyles(color)}
+        >
           <Icon className="w-8 h-8" />
         </div>
         {trend && (
-          <div className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black tracking-widest uppercase transition-all duration-300 group-hover:scale-105",
-            trend === 'up' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"
-          )}>
+          <div 
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black tracking-widest uppercase transition-all duration-300 group-hover:scale-105 border"
+            style={{
+              backgroundColor: trendColor,
+              color: trendTextColor,
+              borderColor: trendTextColor
+            }}
+          >
             {trend === 'up' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
             {trendValue}%
           </div>
@@ -45,10 +80,19 @@ export const StatCard = ({
       </div>
 
       <div className="relative z-10">
-        <h3 className="text-surface-500 dark:text-surface-400 text-xs font-black uppercase tracking-widest mb-3 opacity-70">
+        <h3 className="text-xs font-black uppercase tracking-widest mb-3 opacity-70" style={{ color: 'var(--text-secondary)' }}>
            {title}
         </h3>
-        <p className="text-4xl font-black text-surface-900 dark:text-white tracking-tighter leading-tight drop-shadow-sm group-hover:text-indigo-600 transition-colors duration-300">
+        <p 
+          className="text-4xl font-black tracking-tighter leading-tight drop-shadow-sm group-hover:transition-colors group-hover:duration-300"
+          style={{ color: 'var(--text-primary)' }}
+          onMouseEnter={(e) => {
+            e.target.style.color = 'var(--primary)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.color = 'var(--text-primary)';
+          }}
+        >
            {value}
         </p>
       </div>

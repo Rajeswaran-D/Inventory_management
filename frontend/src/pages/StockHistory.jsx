@@ -36,17 +36,17 @@ export const StockHistory = () => {
     <div className="space-y-6 animate-in">
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-           <History className="w-8 h-8 text-primary-600" />
-           <h1 className="text-3xl font-bold tracking-tight text-surface-900 dark:text-white">Stock Timeline</h1>
+           <History className="w-8 h-8 text-indigo-600" />
+           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Stock Timeline</h1>
         </div>
-        <p className="text-surface-500 dark:text-surface-400">Track every movement of your inventory over time.</p>
+        <p className="text-gray-600 dark:text-gray-400">Track every movement of your inventory over time.</p>
       </header>
 
-      <div className="flex flex-wrap gap-4 p-6 bg-white dark:bg-surface-900 rounded-3xl border border-surface-200 dark:border-surface-800 shadow-sm">
+      <div className="flex flex-wrap gap-4 p-6 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
          <div className="flex-1 min-w-[200px]">
-           <label className="block text-xs font-bold text-surface-400 uppercase tracking-widest mb-2 px-1">Movement Type</label>
+           <label className="block text-xs font-bold text-gray-700 dark:text-gray-400 uppercase tracking-widest mb-2 px-1">Movement Type</label>
            <select 
-             className="w-full bg-surface-50 dark:bg-surface-800 border-none rounded-xl px-4 py-3 text-surface-900 dark:text-white focus:ring-2 focus:ring-primary-500 shadow-inner transition-all"
+             className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
              value={filters.type}
              onChange={e => setFilters({...filters, type: e.target.value})}
            >
@@ -56,52 +56,52 @@ export const StockHistory = () => {
            </select>
          </div>
          <div className="flex-1 min-w-[200px]">
-           <label className="block text-xs font-bold text-surface-400 uppercase tracking-widest mb-2 px-1">From Date</label>
+           <label className="block text-xs font-bold text-gray-700 dark:text-gray-400 uppercase tracking-widest mb-2 px-1">From Date</label>
            <input 
              type="date" 
-             className="w-full bg-surface-50 dark:bg-surface-800 border-none rounded-xl px-4 py-3 text-surface-900 dark:text-white focus:ring-2 focus:ring-primary-500 shadow-inner transition-all"
+             className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
              value={filters.startDate}
              onChange={e => setFilters({...filters, startDate: e.target.value})}
            />
          </div>
          <div className="flex-1 min-w-[200px]">
-           <label className="block text-xs font-bold text-surface-400 uppercase tracking-widest mb-2 px-1">To Date</label>
+           <label className="block text-xs font-bold text-gray-700 dark:text-gray-400 uppercase tracking-widest mb-2 px-1">To Date</label>
            <input 
              type="date" 
-             className="w-full bg-surface-50 dark:bg-surface-800 border-none rounded-xl px-4 py-3 text-surface-900 dark:text-white focus:ring-2 focus:ring-primary-500 shadow-inner transition-all"
+             className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
              value={filters.endDate}
              onChange={e => setFilters({...filters, endDate: e.target.value})}
            />
          </div>
       </div>
 
-      <div className="bg-white dark:bg-surface-900 rounded-4xl border border-surface-200 dark:border-surface-800 shadow-xl overflow-hidden min-h-[400px]">
+      <div className="bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden min-h-[400px]">
         {loading ? (
-          <div className="flex items-center justify-center p-20 text-surface-400">Loading history...</div>
+          <div className="flex items-center justify-center p-20 text-gray-400">Loading history...</div>
         ) : (
-          <div className="divide-y divide-surface-100 dark:divide-surface-800">
+          <div className="divide-y divide-gray-200 dark:divide-slate-700">
             {history.length === 0 ? (
-               <div className="p-20 text-center text-surface-400">No records found for the selected period.</div>
+               <div className="p-20 text-center text-gray-600 dark:text-gray-400">No records found for the selected period.</div>
             ) : (
               history.map((record) => (
-                <div key={record._id} className="flex items-center justify-between p-8 hover:bg-surface-50/50 dark:hover:bg-surface-800/30 transition-colors group">
-                  <div className="flex items-center gap-6">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${record.type === 'IN' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' : 'bg-rose-50 text-rose-600 dark:bg-rose-900/20'}`}>
-                      {record.type === 'IN' ? <ArrowUpCircle className="w-8 h-8" /> : <ArrowDownCircle className="w-8 h-8" />}
+                <div key={record._id} className="flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors group">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center shadow-sm transition-transform group-hover:scale-110 ${record.type === 'IN' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
+                      {record.type === 'IN' ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}
                     </div>
                     <div>
-                      <h4 className="font-bold text-lg text-surface-900 dark:text-white">{record.envelopeId?.size || 'Unknown Product'} {record.envelopeId?.materialType}</h4>
-                      <p className="flex items-center gap-2 text-surface-500 font-medium">
+                      <h4 className="font-bold text-base text-gray-900 dark:text-white">{record.envelopeId?.size || 'Unknown Product'} {record.envelopeId?.materialType}</h4>
+                      <p className="flex items-center gap-2 text-gray-600 dark:text-gray-400 font-medium text-sm">
                         <Calendar className="w-4 h-4" />
                         {format(new Date(record.date), 'MMM dd, yyyy · hh:mm a')}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-2xl font-black ${record.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-2xl font-bold ${record.type === 'IN' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {record.type === 'IN' ? '+' : '-'}{record.quantity.toLocaleString()}
                     </p>
-                    <p className="text-xs uppercase font-bold tracking-widest text-surface-400 mt-1">Transaction Success</p>
+                    <p className="text-xs uppercase font-semibold tracking-wide text-gray-500 dark:text-gray-400 mt-1">Transaction Success</p>
                   </div>
                 </div>
               ))

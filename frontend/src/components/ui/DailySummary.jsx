@@ -20,10 +20,19 @@ export const DailySummary = ({ refreshTrigger }) => {
         endDate: today
       });
 
-      const sales = res.data || [];
-      const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+      const sales = res.data?.data || res.data || [];
+      // FIX: Use grandTotal instead of total
+      const totalRevenue = sales.reduce((sum, sale) => {
+        const amount = sale.grandTotal || sale.total || 0;
+        return sum + amount;
+      }, 0);
       const totalTransactions = sales.length;
-      const totalItemsSold = sales.reduce((sum, sale) => sum + (sale.items?.length || 0), 0);
+      const totalItemsSold = sales.reduce((sum, sale) => {
+        const itemCount = sale.items?.reduce((cnt, item) => cnt + (item.quantity || 0), 0) || 0;
+        return sum + itemCount;
+      }, 0);
+
+      console.log('📊 Daily summary updated:', { totalRevenue, totalTransactions, totalItemsSold });
 
       setSummary({
         totalRevenue,
@@ -31,7 +40,7 @@ export const DailySummary = ({ refreshTrigger }) => {
         totalItemsSold
       });
     } catch (err) {
-      console.error('Error fetching daily summary:', err);
+      console.error('❌ Error fetching daily summary:', err);
     } finally {
       setLoading(false);
     }
@@ -62,28 +71,47 @@ export const DailySummary = ({ refreshTrigger }) => {
     }
   ];
 
+  const getColorStyles = (color) => {
+    const colors = {
+      emerald: {
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        color: 'var(--primary)'
+      },
+      blue: {
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        color: '#3B82F6'
+      },
+      purple: {
+        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+        color: '#A855F7'
+      }
+    };
+    return colors[color] || colors.emerald;
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {metrics.map((metric, idx) => {
         const Icon = metric.icon;
-        const colorClass = {
-          emerald: 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
-          blue: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
-          purple: 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-        };
 
         return (
           <Card key={idx} className="hover:shadow-md transition-shadow duration-200">
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                <span 
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
                   {metric.title}
                 </span>
-                <div className={`p-2 rounded-lg ${colorClass[metric.color]}`}>
+                <div 
+                  className="p-2 rounded-lg"
+                  style={getColorStyles(metric.color)}
+                >
                   <Icon className="w-4 h-4" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
                 {loading ? '...' : metric.value}
               </p>
             </CardContent>

@@ -48,25 +48,41 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
-            <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col bg-white dark:bg-gray-900">
+            <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <div 
+                className="flex items-center justify-between p-6 border-b"
+                style={{
+                  borderColor: 'var(--border)',
+                  backgroundColor: 'var(--bg-card)'
+                }}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-red-100 dark:bg-red-950 rounded-lg">
-                    <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(220, 38, 38, 0.1)' }}>
+                    <AlertTriangle className="w-5 h-5" style={{ color: '#DC2626' }} />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                    <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                       Low Stock Items
                     </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                       {lowStockItems.length} product{lowStockItems.length !== 1 ? 's' : ''} below 50 units
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="p-1 rounded-lg transition-colors"
+                  style={{
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'transparent'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = 'var(--border)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                  }}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -76,11 +92,11 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
               <div className="flex-1 overflow-y-auto p-6">
                 {loading ? (
                   <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600" />
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--primary)' }} />
                   </div>
                 ) : lowStockItems.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p style={{ color: 'var(--text-secondary)' }}>
                       ✓ All products are well stocked
                     </p>
                   </div>
@@ -89,25 +105,29 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
                     {lowStockItems.map((item) => (
                       <div
                         key={item._id}
-                        className="p-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg hover:shadow-md transition-shadow"
+                        className="p-4 border rounded-lg hover:shadow-md transition-shadow"
+                        style={{
+                          backgroundColor: 'rgba(220, 38, 38, 0.05)',
+                          borderColor: '#DC2626'
+                        }}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 dark:text-white">
+                            <h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                               {item.size}
                             </h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
                               {item.materialType} • GSM {item.gsm}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                            <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
                               Price: ₹{item.price}
                             </p>
                           </div>
                           <div className="text-right">
-                            <div className="inline-block px-3 py-1 bg-red-600 text-white rounded-full">
+                            <div className="inline-block px-3 py-1 text-white rounded-full" style={{ backgroundColor: '#DC2626' }}>
                               <p className="text-sm font-bold">{item.quantity} units</p>
                             </div>
-                            <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+                            <p className="text-xs mt-2 font-medium" style={{ color: '#DC2626' }}>
                               Action Required
                             </p>
                           </div>
@@ -119,17 +139,44 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
               </div>
 
               {/* Footer */}
-              <div className="border-t border-gray-200 dark:border-gray-800 p-6 flex gap-3">
+              <div 
+                className="border-t p-6 flex gap-3"
+                style={{
+                  borderColor: 'var(--border)',
+                  backgroundColor: 'var(--bg-main)'
+                }}
+              >
                 <button
                   onClick={fetchLowStockItems}
-                  className="flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
+                  style={{
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'transparent'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = 'var(--border)';
+                    e.target.style.color = 'var(--primary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                    e.target.style.color = 'var(--text-secondary)';
+                  }}
                 >
                   <RefreshCw className="w-4 h-4" />
                   Refresh
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex-1 px-4 py-2 bg-gray-900 dark:bg-gray-800 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-700 transition-colors font-medium"
+                  className="flex-1 px-4 py-2 rounded-lg transition-colors font-medium text-white"
+                  style={{
+                    backgroundColor: 'var(--primary)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = 'var(--primary-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'var(--primary)';
+                  }}
                 >
                   Close
                 </button>

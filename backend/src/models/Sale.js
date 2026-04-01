@@ -1,19 +1,67 @@
 const mongoose = require('mongoose');
 
 const saleSchema = new mongoose.Schema({
-  customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
+  // Customer information (stored directly for easy access)
+  customerName: { 
+    type: String, 
+    required: true,
+    trim: true
+  },
+  customerPhone: { 
+    type: String, 
+    default: ''
+  },
+  
+  // Customer reference (for detailed lookups)
+  customerId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Customer', 
+    required: true 
+  },
+  
+  // Sale items (line items on the bill)
   items: [{
-    envelopeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Envelope' },
+    productId: { 
+      type: String,  // Can be product key string like "maplitho" or ObjectId
+      required: true
+    },
+    productName: String,
+    displayName: String,
+    gsm: mongoose.Schema.Types.Mixed,
     size: String,
-    materialType: String,
-    gsm: Number,
     color: String,
-    price: Number,
-    quantity: Number,
-    total: Number
+    price: { 
+      type: Number, 
+      required: true,
+      default: 0
+    },
+    quantity: { 
+      type: Number, 
+      required: true,
+      default: 0
+    },
+    itemTotal: { 
+      type: Number, 
+      default: 0
+    }
   }],
-  grandTotal: { type: Number, required: true },
-  date: { type: Date, default: Date.now }
+  
+  // Financial data
+  grandTotal: { 
+    type: Number, 
+    required: true 
+  },
+  
+  // Metadata
+  date: { 
+    type: Date, 
+    default: Date.now,
+    index: true
+  }
 }, { timestamps: true });
+
+// Index for quick lookups
+saleSchema.index({ customerName: 1 });
+saleSchema.index({ date: -1 });
 
 module.exports = mongoose.model('Sale', saleSchema);

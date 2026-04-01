@@ -10,25 +10,46 @@ export const Input = ({
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 tracking-tight">
+        <label 
+          className="block text-sm font-medium tracking-tight"
+          style={{ color: 'var(--text-primary)' }}
+        >
           {label}
         </label>
       )}
       <div className="relative">
         {Icon && (
-          <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500 pointer-events-none" />
+          <Icon 
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
+            style={{ color: 'var(--text-secondary)' }}
+          />
         )}
         <input 
           className={cn(
-            "w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:border-transparent outline-none transition-all duration-200",
+            "w-full px-4 py-2.5 rounded-lg border outline-none transition-all duration-200 shadow-sm",
             Icon ? "pl-10" : "",
-            error ? "border-red-500 focus:ring-red-500" : "",
             className
           )}
+          style={{
+            borderColor: error ? '#DC2626' : 'var(--border)',
+            backgroundColor: 'var(--bg-card)',
+            color: 'var(--text-primary)',
+          }}
+          onFocus={(e) => {
+            if (!error) {
+              e.target.style.borderColor = 'var(--primary)';
+              e.target.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.1)';
+            }
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = error ? '#DC2626' : 'var(--border)';
+            e.target.style.boxShadow = 'none';
+          }}
+          placeholder={props.placeholder || ''}
           {...props}
         />
         {error && (
-          <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+          <p className="mt-1 text-xs font-medium" style={{ color: '#DC2626' }}>
             {error}
           </p>
         )}

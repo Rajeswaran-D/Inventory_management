@@ -1,0 +1,457 @@
+const mongoose = require('mongoose');
+const ProductMaster = require('../models/ProductMaster');
+const ProductVariant = require('../models/ProductVariant');
+const Inventory = require('../models/Inventory');
+
+// ===== PRODUCT MASTER ENDPOINTS =====
+
+/**
+ * GET /api/products/master
+ * Get all products (with filtering)
+ */
+exports.getAllProducts = async (req, res, next) => {
+  try {
+    console.log('📦 Fetching all products...');
+    const { isActive } = req.query;
+    
+    let query = {};
+    if (isActive !== undefined) {
+      query.isActive = isActive === 'true';
+    }
+
+    const products = await ProductMaster.find(query).sort({ name: 1 });
+    console.log(`✅ Found ${products.length} products`);
+    
+    res.status(200).json(products);
+  } catch (err) {
+    console.error('❌ Error fetching products:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/master/:id
+ * Get product by ID with all variants
+ */
+exports.getProductById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    console.log(`🔍 Fetching product: ${id}`);
+
+    const product = await ProductMaster.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // Get all variants for this product
+    const variants = await ProductVariant.find({ productId: id, isActive: true });
+    console.log(`  ✅ Found ${variants.length} variants`);
+
+    res.status(200).json({
+      ...product.toObject(),
+      variants
+    });
+  } catch (err) {
+    console.error('❌ Error fetching product:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * POST /api/products/master
+ * Create new product master
+ */
+exports.createProduct = async (req, res, next) => {
+  try {
+    const { name, gsmOptions, sizeOptions, colorOptions, description, category } = req.body;
+    
+    console.log(`📝 Creating new product: ${name}`);
+
+    // Validate required fields
+    if (!name) {
+      return res.status(400).json({ message: 'Product name is required' });
+    }
+
+    // Check if product already exists
+    const existing = await ProductMaster.findOne({ name });
+    if (existing) {
+      return res.status(400).json({ message: `Product '${name}' already exists` });
+    }
+
+    const product = new ProductMaster({
+      name,
+      gsmOptions: gsmOptions || [],
+      sizeOptions: sizeOptions || [],
+      colorOptions: colorOptions || [],
+      description,
+      category
+    });
+
+    await product.save();
+    console.log(`✅ Product created: ${product._id}`);
+
+    res.status(201).json({
+      message: 'Product created successfully',
+      product
+    });
+  } catch (err) {
+    console.error('❌ Error creating product:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/products/master/:id
+ * Update product master (add GSM/Size/Color options)
+ */
+exports.updateProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { gsmOptions, sizeOptions, colorOptions } = req.body;
+
+    console.log(`✏️  Updating product: ${id}`);
+
+    const product = await ProductMaster.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // Update options (merge with existing to avoid duplicates)
+    if (gsmOptions && Array.isArray(gsmOptions)) {
+      product.gsmOptions = [...new Set([...product.gsmOptions, ...gsmOptions])].sort((a, b) => a - b);
+    }
+    if (sizeOptions && Array.isArray(sizeOptions)) {
+      product.sizeOptions = [...new Set([...product.sizeOptions, ...sizeOptions])];
+    }
+    if (colorOptions && Array.isArray(colorOptions)) {
+      product.colorOptions = [...new Set([...product.colorOptions, ...colorOptions])];
+    }
+
+    await product.save();
+    console.log(`✅ Product updated: ${id}`);
+
+    res.status(200).json({
+      message: 'Product updated successfully',
+      product
+    });
+  } catch (err) {
+    console.error('❌ Error updating product:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/products/master/:id
+ * Soft delete product (mark inactive)
+ */
+exports.deleteProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    console.log(`🗑️  Deleting product: ${id}`);
+
+    const product = await ProductMaster.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { new: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    console.log(`✅ Product marked inactive: ${id}`);
+    res.status(200).json({ message: 'Product deleted successfully', product });
+  } catch (err) {
+    console.error('❌ Error deleting product:', err.message);
+    next(err);
+  }
+};
+
+// ===== PRODUCT VARIANT ENDPOINTS =====
+
+/**
+ * GET /api/products/variants
+ * Get all variants (with filtering)
+ */
+exports.getAllVariants = async (req, res, next) => {
+  try {
+    const { productId, isActive } = req.query;
+    console.log('📋 Fetching variants...');
+
+    let query = {};
+    if (productId) query.productId = productId;
+    if (isActive !== undefined) query.isActive = isActive === 'true';
+
+    const variants = await ProductVariant.find(query)
+      .populate('productId')
+      .sort({ displayName: 1 });
+
+    console.log(`✅ Found ${variants.length} variants`);
+    res.status(200).json(variants);
+  } catch (err) {
+    console.error('❌ Error fetching variants:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/variants/:id
+ * Get variant by ID
+ */
+exports.getVariantById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    console.log(`🔍 Fetching variant: ${id}`);
+
+    const variant = await ProductVariant.findById(id).populate('productId');
+    if (!variant) {
+      return res.status(404).json({ message: 'Variant not found' });
+    }
+
+    console.log(`✅ Found variant: ${variant.displayName}`);
+    res.status(200).json(variant);
+  } catch (err) {
+    console.error('❌ Error fetching variant:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * POST /api/products/variants
+ * Create new product variant
+ * CRITICAL: Auto-creates corresponding Inventory entry
+ */
+exports.createVariant = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { productId, gsm, size, color } = req.body;
+    
+    console.log(`📝 Creating variant for product: ${productId}`);
+
+    // Validate product exists
+    const product = await ProductMaster.findById(productId).session(session);
+    if (!product) {
+      await session.abortTransaction();
+      return res.status(400).json({ message: 'Invalid product ID' });
+    }
+
+    // Validate required fields based on product type
+    if (product.hasGSM && !gsm) {
+      await session.abortTransaction();
+      return res.status(400).json({ message: `GSM is required for ${product.name}` });
+    }
+    if (product.hasSize && !size) {
+      await session.abortTransaction();
+      return res.status(400).json({ message: `Size is required for ${product.name}` });
+    }
+
+    // Check for duplicate variant
+    let duplicateQuery = { productId };
+    if (product.hasGSM) duplicateQuery.gsm = gsm;
+    if (product.hasSize) duplicateQuery.size = size;
+    if (product.hasColor) duplicateQuery.color = color || null;
+
+    const existing = await ProductVariant.findOne(duplicateQuery).session(session);
+    if (existing) {
+      await session.abortTransaction();
+      return res.status(400).json({ message: 'This variant already exists' });
+    }
+
+    // Create variant
+    const variant = new ProductVariant({
+      productId,
+      gsm: product.hasGSM ? gsm : null,
+      size: product.hasSize ? size : null,
+      color: product.hasColor ? color : null,
+      hasSize: product.hasSize,
+      hasGSM: product.hasGSM
+    });
+
+    await variant.save({ session });
+    console.log(`✅ Variant created: ${variant._id} (${variant.displayName})`);
+
+    // AUTO-CREATE corresponding Inventory entry
+    const inventory = new Inventory({
+      variantId: variant._id,
+      quantity: 0,
+      price: 0,
+      minimumStockLevel: 50
+    });
+
+    await inventory.save({ session });
+    console.log(`✅ Inventory auto-created: ${inventory._id} for variant ${variant._id}`);
+
+    // Commit transaction
+    await session.commitTransaction();
+
+    res.status(201).json({
+      message: 'Variant and Inventory created successfully',
+      variant: {...variant.toObject(), inventoryId: inventory._id}
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    console.error('❌ Error creating variant:', err.message);
+    next(err);
+  } finally {
+    session.endSession();
+  }
+};
+
+/**
+ * DELETE /api/products/variants/:id
+ * Soft delete variant
+ */
+exports.deleteVariant = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    console.log(`🗑️  Deleting variant: ${id}`);
+
+    const variant = await ProductVariant.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { new: true }
+    );
+
+    if (!variant) {
+      return res.status(404).json({ message: 'Variant not found' });
+    }
+
+    console.log(`✅ Variant deleted: ${id}`);
+    res.status(200).json({ message: 'Variant deleted successfully', variant });
+  } catch (err) {
+    console.error('❌ Error deleting variant:', err.message);
+    next(err);
+  }
+};
+
+// ===== DROPDOWN DATA ENDPOINTS (for dynamic UI) =====
+
+/**
+ * GET /api/products/dropdowns/materials
+ * Get all product names for material dropdown
+ */
+exports.getMaterialOptions = async (req, res, next) => {
+  try {
+    console.log('📊 Fetching material options...');
+    
+    const products = await ProductMaster.find({ isActive: true }).select('name');
+    const materials = products.map(p => p.name);
+    
+    console.log(`✅ Found ${materials.length} materials`);
+    res.status(200).json(materials);
+  } catch (err) {
+    console.error('❌ Error fetching materials:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/dropdowns/gsm?productId=:id
+ * Get GSM options for a product
+ */
+exports.getGSMOptions = async (req, res, next) => {
+  try {
+    const { productId } = req.query;
+    console.log(`📊 Fetching GSM options for product: ${productId}`);
+
+    const product = await ProductMaster.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    if (!product.hasGSM) {
+      return res.status(200).json([]);
+    }
+
+    console.log(`✅ Found ${product.gsmOptions.length} GSM options`);
+    res.status(200).json(product.gsmOptions);
+  } catch (err) {
+    console.error('❌ Error fetching GSM options:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/dropdowns/sizes?productId=:id
+ * Get size options for a product
+ */
+exports.getSizeOptions = async (req, res, next) => {
+  try {
+    const { productId } = req.query;
+    console.log(`📊 Fetching size options for product: ${productId}`);
+
+    const product = await ProductMaster.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    if (!product.hasSize) {
+      return res.status(200).json([]);
+    }
+
+    console.log(`✅ Found ${product.sizeOptions.length} size options`);
+    res.status(200).json(product.sizeOptions);
+  } catch (err) {
+    console.error('❌ Error fetching size options:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/dropdowns/colors?productId=:id
+ * Get color options for a product
+ */
+exports.getColorOptions = async (req, res, next) => {
+  try {
+    const { productId } = req.query;
+    console.log(`📊 Fetching color options for product: ${productId}`);
+
+    const product = await ProductMaster.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    if (!product.hasColor) {
+      return res.status(200).json([]);
+    }
+
+    console.log(`✅ Found ${product.colorOptions.length} color options`);
+    res.status(200).json(product.colorOptions);
+  } catch (err) {
+    console.error('❌ Error fetching color options:', err.message);
+    next(err);
+  }
+};
+
+/**
+ * GET /api/products/config
+ * Get product configuration (field requirements for all products)
+ * Used by frontend to determine conditional rendering
+ */
+exports.getProductConfiguration = async (req, res, next) => {
+  try {
+    console.log('🔧 Fetching product configuration...');
+
+    const products = await ProductMaster.find({ isActive: true });
+    
+    const config = {};
+    products.forEach(product => {
+      config[product.name] = {
+        hasGSM: product.hasGSM,
+        hasSize: product.hasSize,
+        hasColor: product.hasColor,
+        gsmOptions: product.gsmOptions,
+        sizeOptions: product.sizeOptions,
+        colorOptions: product.colorOptions
+      };
+    });
+
+    console.log(`✅ Configuration fetched for ${products.length} products`);
+    res.status(200).json(config);
+  } catch (err) {
+    console.error('❌ Error fetching configuration:', err.message);
+    next(err);
+  }
+};

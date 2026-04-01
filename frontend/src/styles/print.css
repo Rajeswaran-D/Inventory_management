@@ -1,0 +1,151 @@
+/**
+ * PRINT STYLES FOR INVOICES
+ * Optimized for A4 printing and PDF export
+ */
+
+@media print {
+  /* Hide all non-print elements */
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Hide UI elements */
+  nav,
+  button,
+  .sidebar,
+  .toolbar,
+  .modal-overlay,
+  .fixed,
+  [class*="print-only"] {
+    display: none !important;
+  }
+
+  /* Show only print content */
+  #print-invoice,
+  .invoice-page {
+    display: block !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Invoice page styling */
+  .invoice-page {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    page-break-after: always;
+    font-family: 'Courier New', monospace;
+    color: #000;
+    background: #fff;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    border: 1px solid #000;
+  }
+
+  /* Remove box shadows and backgrounds for print */
+  .shadow,
+  .shadow-2xl,
+  .bg-opacity-50,
+  [class*="shadow"] {
+    box-shadow: none !important;
+  }
+
+  /* Remove rounded corners for cleaner print */
+  [class*="rounded"] {
+    border-radius: 0 !important;
+  }
+
+  /* Ensure all text is black */
+  * {
+    color: #000 !important;
+  }
+
+  /* Remove all background colors except necessary ones */
+  .bg-gray-100,
+  .bg-blue-50,
+  [class*="bg-"] {
+    background-color: transparent !important;
+  }
+
+  /* Prevent page breaks in unwanted places */
+  tr,
+  .border,
+  .space-y-1 {
+    page-break-inside: avoid;
+  }
+
+  /* Ensure images scale properly */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Print-specific spacing */
+  .invoice-page {
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+}
+
+/* Hide print content in normal view */
+#print-invoice {
+  display: none;
+}
+
+/* Show print content during print */
+@media print {
+  #print-invoice {
+    display: block;
+  }
+
+  /* Hide modal and everything else */
+  body > * {
+    display: none;
+  }
+
+  #print-invoice {
+    display: block;
+  }
+}
+
+/* Utility classes for print styling */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-break-before {
+    page-break-before: always;
+  }
+
+  .print-break-after {
+    page-break-after: always;
+  }
+
+  .print-no-break {
+    page-break-inside: avoid;
+  }
+}

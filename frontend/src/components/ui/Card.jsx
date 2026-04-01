@@ -6,19 +6,38 @@ export const Card = ({
   variant = 'white', 
   ...props 
 }) => {
-  const variants = {
-    white: 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md',
-    highlight: 'bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 shadow-sm hover:shadow-md',
-    danger: 'bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 shadow-sm hover:shadow-md',
+  const getVariantStyles = (variant) => {
+    if (variant === 'white') {
+      return {
+        backgroundColor: 'var(--bg-card)',
+        borderColor: 'var(--border)',
+        color: 'var(--text-primary)',
+      };
+    }
+    if (variant === 'highlight') {
+      return {
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderColor: 'var(--primary)',
+        color: 'var(--text-primary)',
+      };
+    }
+    if (variant === 'danger') {
+      return {
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderColor: '#DC2626',
+        color: 'var(--text-primary)',
+      };
+    }
+    return {};
   };
 
   return (
     <div 
       className={cn(
-        "rounded-lg p-6 transition-all duration-300",
-        variants[variant],
+        "rounded-xl p-6 border shadow-md hover:shadow-lg transition-shadow duration-200",
         className
       )}
+      style={getVariantStyles(variant)}
       {...props}
     >
       {children}
@@ -33,7 +52,10 @@ export const CardHeader = ({ children, className }) => (
 );
 
 export const CardTitle = ({ children, className }) => (
-  <h3 className={cn("text-lg font-bold text-gray-900 dark:text-white tracking-tight", className)}>
+  <h3 
+    className={cn("text-lg font-bold tracking-tight", className)}
+    style={{ color: 'var(--text-primary)' }}
+  >
     {children}
   </h3>
 );

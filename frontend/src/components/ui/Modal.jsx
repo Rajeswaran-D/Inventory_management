@@ -42,18 +42,30 @@ export const Modal = ({
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             className={cn(
-              "relative w-full bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden",
+              "relative w-full rounded-xl border shadow-lg flex flex-col max-h-[90vh] overflow-hidden bg-white",
               sizes[size],
               className
             )}
+            style={{
+              backgroundColor: 'white',
+              borderColor: '#e5e7eb'
+            }}
           >
-            <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-800 sticky top-0">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+            <div 
+              className="px-6 py-5 border-b flex items-center justify-between sticky top-0"
+              style={{
+                backgroundColor: 'white',
+                borderColor: '#e5e7eb'
+              }}
+            >
+              <h2 
+                className="text-xl font-bold tracking-tight text-gray-900"
+              >
                 {title}
               </h2>
               <button 
                 onClick={onClose}
-                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-95"
+                className="p-2 rounded-lg transition-all active:scale-95 text-gray-600 hover:bg-gray-100"
                 title="Close"
               >
                 <X className="w-5 h-5" />

@@ -1,69 +1,102 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Package, AlertTriangle, ShoppingCart, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, Package, AlertTriangle, ShoppingCart, ArrowUp, ArrowDown, Calendar, BarChart3 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { saleService, envelopeService } from '../services/api';
 import { Card, CardTitle, CardContent } from '../components/ui/Card';
 import { DailySummary } from '../components/ui/DailySummary';
 import { LowStockModal } from '../components/ui/LowStockModal';
+import { realTimeSyncService } from '../services/realTimeSync';
 
 export const Dashboard = () => {
   const [stats, setStats] = useState({
-    totalStock: 0,
+    // Today metrics
     todaySales: 0,
-    totalRevenue: 0,
-    lowStockCount: 0,
+    todayRevenue: 0,
+    
+    // Comparison (yesterday)
+    previousSales: 0,
     previousRevenue: 0,
-    previousSales: 0
+    
+    // Weekly/Monthly/Yearly
+    weeklySales: 0,
+    weeklyRevenue: 0,
+    monthlySales: 0,
+    monthlyRevenue: 0,
+    yearlySales: 0,
+    yearlyRevenue: 0,
+    
+    // Inventory
+    totalProducts: 0,
+    totalStock: 0,
+    totalStockValue: 0,
+    lowStockCount: 0
   });
   const [loading, setLoading] = useState(true);
   const [showLowStockModal, setShowLowStockModal] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Subscribe to real-time updates
+    const unsubscribe = realTimeSyncService.subscribe('dashboard', (data) => {
+      if (data?.type === 'refresh') {
+        console.log('🔄 Dashboard real-time refresh triggered');
+        setRefreshTrigger(prev => prev + 1);
+        fetchDashboardData();
+      }
+    });
+
+    // Cleanup subscription on unmount
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const today = new Date();
-      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      console.log('📊 Fetching comprehensive dashboard data...');
       
-      const todayStr = today.toISOString().split('T')[0];
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      // Fetch today's sales
-      const todayRes = await saleService.getAll({
-        startDate: todayStr,
-        endDate: todayStr
-      });
+      const reportsRes = await saleService.getReports();
+      console.log('✅ Reports received:', reportsRes.data);
       
-      // Fetch yesterday's sales for comparison
-      const yesterdayRes = await saleService.getAll({
-        startDate: yesterdayStr,
-        endDate: yesterdayStr
-      });
-
-      const envelopesRes = await envelopeService.getAll({});
+      const data = reportsRes.data?.data || {};
       
-      const todaySales = todayRes.data || [];
-      const yesterdaySales = yesterdayRes.data || [];
-      
-      const lowStock = envelopesRes.data ? envelopesRes.data.filter(e => e.quantity < 50).length : 0;
-      const totalStock = envelopesRes.data ? envelopesRes.data.reduce((sum, e) => sum + (e.quantity || 0), 0) : 0;
-
-      const todayRevenue = todaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
-      const yesterdayRevenue = yesterdaySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
-
       setStats({
-        totalStock,
-        todaySales: todaySales.length,
-        totalRevenue: todayRevenue,
-        lowStockCount: lowStock,
-        previousRevenue: yesterdayRevenue,
-        previousSales: yesterdaySales.length
+        // Today
+        todaySales: data.today?.salesCount || 0,
+        todayRevenue: data.today?.revenue || 0,
+        
+        // Previous (yesterday)
+        previousSales: data.previous?.salesCount || 0,
+        previousRevenue: data.previous?.revenue || 0,
+        
+        // Weekly
+        weeklySales: data.weekly?.salesCount || 0,
+        weeklyRevenue: data.weekly?.revenue || 0,
+        
+        // Monthly
+        monthlySales: data.monthly?.salesCount || 0,
+        monthlyRevenue: data.monthly?.revenue || 0,
+        
+        // Yearly
+        yearlySales: data.yearly?.salesCount || 0,
+        yearlyRevenue: data.yearly?.revenue || 0,
+        
+        // Inventory
+        totalProducts: data.inventory?.totalProducts || 0,
+        totalStock: data.inventory?.totalStock || 0,
+        totalStockValue: data.inventory?.totalStockValue || 0,
+        lowStockCount: data.inventory?.lowStockCount || 0
       });
+      
+      console.log('📈 Dashboard stats updated');
+      setLastRefresh(new Date());
+      
     } catch (err) {
-      console.error('Error fetching dashboard data:', err);
+      console.error('❌ Error fetching dashboard data:', err);
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -74,8 +107,11 @@ export const Dashboard = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+          <div 
+            className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4"
+            style={{ borderColor: 'var(--primary)' }}
+          />
+          <p style={{ color: 'var(--text-secondary)' }}>Loading dashboard...</p>
         </div>
       </div>
     );
@@ -83,170 +119,194 @@ export const Dashboard = () => {
 
   // Calculate trend percentages
   const revenueTrend = stats.previousRevenue > 0 
-    ? (((stats.totalRevenue - stats.previousRevenue) / stats.previousRevenue) * 100).toFixed(1)
+    ? (((stats.todayRevenue - stats.previousRevenue) / stats.previousRevenue) * 100).toFixed(1)
     : 0;
 
   const salesTrend = stats.previousSales > 0 
     ? (((stats.todaySales - stats.previousSales) / stats.previousSales) * 100).toFixed(1)
     : 0;
 
-  const metrics = [
-    {
-      title: 'Today\'s Sales',
-      value: stats.todaySales,
-      icon: ShoppingCart,
-      color: 'blue',
-      trend: salesTrend > 0 ? 'up' : salesTrend < 0 ? 'down' : null,
-      trendValue: Math.abs(salesTrend)
-    },
-    {
-      title: 'Total Revenue',
-      value: `₹${stats.totalRevenue.toLocaleString()}`,
-      icon: TrendingUp,
-      color: 'green',
-      trend: revenueTrend > 0 ? 'up' : revenueTrend < 0 ? 'down' : null,
-      trendValue: Math.abs(revenueTrend)
-    },
-    {
-      title: 'Total Stock',
-      value: stats.totalStock.toLocaleString(),
-      icon: Package,
-      color: 'purple',
-      trend: null
-    },
-    {
-      title: 'Low Stock Items',
-      value: stats.lowStockCount,
-      icon: AlertTriangle,
-      color: 'red',
-      interactive: true,
-      onClick: () => setShowLowStockModal(true)
-    }
-  ];
+  const refreshTime = lastRefresh.toLocaleTimeString();
 
   return (
-    <div className="space-y-8">
-      <LowStockModal isOpen={showLowStockModal} onClose={() => setShowLowStockModal(false)} />
-
-      {/* Page Header */}
+    <div className="space-y-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Welcome back! Here's your business overview.</p>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">Real-time business analytics and insights</p>
+          <p className="text-xs text-gray-500 mt-2">Last updated: {refreshTime}</p>
         </div>
         <button
           onClick={fetchDashboardData}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:scale-95 transition-all font-medium"
+          className="px-4 py-2 text-white rounded-lg active:scale-95 transition-all font-medium bg-blue-600 hover:bg-blue-700"
         >
-          Refresh
+          🔄 Refresh
         </button>
       </div>
 
-      {/* Daily Summary Section */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-4">Today's Performance</h2>
-        <DailySummary refreshTrigger={loading} />
-      </div>
-
-      {/* Key Metrics */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-4">Key Metrics</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {metrics.map((metric) => {
-            const Icon = metric.icon;
-            const colorClasses = {
-              blue: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
-              green: 'bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400',
-              purple: 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400',
-              red: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
-            };
-
-            return (
-              <Card 
-                key={metric.title} 
-                className={`bg-white dark:bg-gray-900 hover:shadow-lg transition-all duration-200 ${metric.interactive ? 'cursor-pointer' : ''}`}
-                onClick={metric.onClick}
-              >
-                <CardContent>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`p-3 rounded-lg ${colorClasses[metric.color]}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    {metric.trend && (
-                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
-                        metric.trend === 'up' 
-                          ? 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300' 
-                          : 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
-                      }`}>
-                        {metric.trend === 'up' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                        {metric.trendValue}%
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
-                    {metric.title}
-                  </p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white break-words">
-                    {metric.value}
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Quick Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Quick Actions</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Access frequently used features
-            </p>
-            <div className="space-y-2">
-              <a href="/billing" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition-colors">
-                ➕ Create New Sale
-              </a>
-              <a href="/inventory" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition-colors">
-                📦 View Inventory
-              </a>
+      {/* Primary Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Today's Sales */}
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Today's Sales</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">{stats.todaySales}</p>
+              {salesTrend !== 0 && (
+                <div className="flex items-center gap-1 mt-2">
+                  {salesTrend > 0 ? (
+                    <>
+                      <ArrowUp className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-600 font-medium">{salesTrend}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDown className="w-4 h-4 text-red-600" />
+                      <span className="text-sm text-red-600 font-medium">{Math.abs(salesTrend)}%</span>
+                    </>
+                  )}
+                  <span className="text-xs text-gray-500">vs yesterday</span>
+                </div>
+              )}
             </div>
-          </CardContent>
+            <ShoppingCart className="w-8 h-8 text-blue-500 opacity-20" />
+          </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Stock Status</h3>
-            <div className="space-y-2">
+        {/* Today's Revenue */}
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Today's Revenue</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">₹{stats.todayRevenue.toLocaleString()}</p>
+              {revenueTrend !== 0 && (
+                <div className="flex items-center gap-1 mt-2">
+                  {revenueTrend > 0 ? (
+                    <>
+                      <ArrowUp className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-600 font-medium">{revenueTrend}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDown className="w-4 h-4 text-red-600" />
+                      <span className="text-sm text-red-600 font-medium">{Math.abs(revenueTrend)}%</span>
+                    </>
+                  )}
+                  <span className="text-xs text-gray-500">vs yesterday</span>
+                </div>
+              )}
+            </div>
+            <TrendingUp className="w-8 h-8 text-green-500 opacity-20" />
+          </div>
+        </Card>
+
+        {/* Total Stock Value */}
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Total Stock Value</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">₹{stats.totalStockValue.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-2">{stats.totalStock} units in stock</p>
+            </div>
+            <Package className="w-8 h-8 text-purple-500 opacity-20" />
+          </div>
+        </Card>
+
+        {/* Low Stock Alert */}
+        <Card 
+          className={stats.lowStockCount > 0 ? 'border-red-200 bg-red-50' : ''}
+          onClick={() => setShowLowStockModal(true)}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-medium ${stats.lowStockCount > 0 ? 'text-red-700' : 'text-gray-600'}`}>
+                Low Stock Items
+              </p>
+              <p className={`text-2xl font-bold mt-2 ${stats.lowStockCount > 0 ? 'text-red-900' : 'text-gray-900'}`}>
+                {stats.lowStockCount}
+              </p>
+              <p className="text-xs text-gray-500 mt-2">Out of {stats.totalProducts} products</p>
+            </div>
+            <AlertTriangle className={`w-8 h-8 opacity-20 ${stats.lowStockCount > 0 ? 'text-red-500' : 'text-gray-500'}`} />
+          </div>
+        </Card>
+      </div>
+
+      {/* Period Comparison Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Weekly */}
+        <Card>
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-5 h-5 text-blue-500" />
+              <p className="text-gray-600 text-sm font-medium">Weekly Performance</p>
+            </div>
+            <div className="space-y-3">
               <div>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {stats.lowStockCount}
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">Products below 50 units</p>
+                <p className="text-xs text-gray-500">Sales Count</p>
+                <p className="text-xl font-bold text-gray-900">{stats.weeklySales}</p>
               </div>
-              <button
-                onClick={() => setShowLowStockModal(true)}
-                className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs font-medium transition-colors"
-              >
-                View Details
-              </button>
+              <div>
+                <p className="text-xs text-gray-500">Revenue</p>
+                <p className="text-xl font-bold text-gray-900">₹{stats.weeklyRevenue.toLocaleString()}</p>
+              </div>
             </div>
-          </CardContent>
+          </div>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Reports</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Generate and analyze sales reports
-            </p>
-            <a href="/reports" className="block px-4 py-2 bg-white dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium text-center transition-colors">
-              📊 View Reports
-            </a>
-          </CardContent>
+        {/* Monthly */}
+        <Card>
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-5 h-5 text-purple-500" />
+              <p className="text-gray-600 text-sm font-medium">Monthly Performance</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-gray-500">Sales Count</p>
+                <p className="text-xl font-bold text-gray-900">{stats.monthlySales}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Revenue</p>
+                <p className="text-xl font-bold text-gray-900">₹{stats.monthlyRevenue.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Yearly */}
+        <Card>
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="w-5 h-5 text-green-500" />
+              <p className="text-gray-600 text-sm font-medium">Yearly Performance</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-gray-500">Sales Count</p>
+                <p className="text-xl font-bold text-gray-900">{stats.yearlySales}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Revenue</p>
+                <p className="text-xl font-bold text-gray-900">₹{stats.yearlyRevenue.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
+
+      {/* Daily Summary for charts */}
+      <DailySummary refreshTrigger={refreshTrigger} />
+
+      {/* Low Stock Modal */}
+      <LowStockModal 
+        isOpen={showLowStockModal} 
+        onClose={() => setShowLowStockModal(false)} 
+      />
     </div>
   );
 };
+
+export default Dashboard;
