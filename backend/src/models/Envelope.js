@@ -17,7 +17,6 @@ const envelopeSchema = new mongoose.Schema({
   },
   color: { 
     type: String,
-    enum: [null, 'White', 'Color'],
     default: null
   },
   price: { 
