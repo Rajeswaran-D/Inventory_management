@@ -24,7 +24,6 @@ const productVariantSchema = new mongoose.Schema({
 
   color: { 
     type: String,
-    enum: [null, 'White', 'Color', 'Natural', 'Mixed'],
     default: null
   },
 
