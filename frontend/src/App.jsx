@@ -7,12 +7,10 @@ import { Dashboard } from './pages/Dashboard';
 import ProductMaster from './pages/ProductMaster';
 import Inventory from './pages/Inventory';
 import { Billing } from './pages/BillingSimplified';
-import { BillingWithVariants } from './pages/BillingWithVariants';
 import { BillHistory } from './pages/BillHistory';
 import { Reports } from './pages/Reports';
 
 import ProductManagement from './pages/ProductManagement';
-import SimpleInventory from './pages/SimpleInventory';
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -59,12 +57,10 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/billing" element={<Billing />} />
-                <Route path="/billing-variants" element={<BillingWithVariants />} />
                 <Route path="/bill-history" element={<BillHistory />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/products" element={<ProductMaster />} />
                 <Route path="/product-management" element={<ProductManagement />} />
-                <Route path="/simple-inventory" element={<SimpleInventory />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </div>

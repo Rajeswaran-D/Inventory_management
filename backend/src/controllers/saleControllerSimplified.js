@@ -1,15 +1,35 @@
 /**
  * SIMPLIFIED SALES CONTROLLER
  * Handles bill generation with inventory tracking
+ * 
+ * FIXES APPLIED:
+ * 1. Inventory update uses variantId (not Product model lookup)
+ * 2. GST calculation stored in Sale record
+ * 3. Auto-generated bill numbers
+ * 4. StockTransaction uses correct references
+ * 5. Proper validation and error handling
  */
 
 const Sale = require('../models/Sale');
 const Customer = require('../models/Customer');
-const Product = require('../models/Product');
 const Inventory = require('../models/Inventory');
 const StockTransaction = require('../models/StockTransaction');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
+
+// ============================================================================
+// GST CALCULATION HELPER
+// ============================================================================
+
+const calculateGST = (subtotal, cgstRate = 9, sgstRate = 9) => {
+  const cgst = parseFloat(((subtotal * cgstRate) / 100).toFixed(2));
+  const sgst = parseFloat(((subtotal * sgstRate) / 100).toFixed(2));
+  const totalBeforeRound = subtotal + cgst + sgst;
+  const grandTotal = Math.round(totalBeforeRound);
+  const roundOff = parseFloat((grandTotal - totalBeforeRound).toFixed(2));
+  
+  return { subtotal, cgst, sgst, roundOff, grandTotal };
+};
 
 // ============================================================================
 // CREATE SALE / GENERATE BILL
@@ -17,7 +37,10 @@ const XLSX = require('xlsx');
 
 exports.createSale = async (req, res) => {
   try {
-    const { customerName, customerPhone, items, grandTotal, date } = req.body;
+    const { 
+      customerName, customerPhone, customerGSTIN, customerAddress,
+      items, grandTotal, date 
+    } = req.body;
 
     console.log('📥 Received sale (bill) request:', {
       customerName,
@@ -28,179 +51,234 @@ exports.createSale = async (req, res) => {
 
     // ===== VALIDATION =====
     if (!customerName || !customerName.trim()) {
-      return res.status(400).json({ message: 'Customer name is required' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Customer name is required' 
+      });
     }
 
-    if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'Items array is required and cannot be empty' });
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Items array is required and cannot be empty' 
+      });
     }
 
-    if (typeof grandTotal !== 'number' || grandTotal < 0) {
-      return res.status(400).json({ message: 'Grand total must be a non-negative number' });
-    }
-
-    // Validate each item
-    let calculatedTotal = 0;
+    // Validate each item and calculate totals
+    let calculatedSubtotal = 0;
     const validatedItems = [];
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
 
       if (!item.quantity || item.quantity <= 0) {
-        return res.status(400).json({ message: `Item ${i + 1}: Quantity must be greater than 0` });
+        return res.status(400).json({ 
+          success: false, 
+          message: `Item ${i + 1}: Quantity must be greater than 0` 
+        });
       }
 
       if (item.price === undefined || item.price < 0) {
-        return res.status(400).json({ message: `Item ${i + 1}: Price cannot be negative` });
+        return res.status(400).json({ 
+          success: false, 
+          message: `Item ${i + 1}: Price cannot be negative` 
+        });
       }
 
       const itemTotal = item.quantity * item.price;
-      calculatedTotal += itemTotal;
+      calculatedSubtotal += itemTotal;
 
-      validatedItems.push({
-        productId: item.productId,
-        productName: item.productName || 'Unknown Product',
+      // Build validated item — accept both variantId and productId flexibly
+      const validatedItem = {
+        productName: item.productName || item.displayName || 'Unknown Product',
+        displayName: item.displayName || item.productName || 'Product',
         gsm: item.gsm || null,
         size: item.size || null,
         color: item.color || null,
-        displayName: item.displayName,
         price: item.price,
         quantity: item.quantity,
         itemTotal: itemTotal
-      });
+      };
 
-      console.log(`  ✅ Item ${i + 1}: ${item.displayName} × ${item.quantity} @ ₹${item.price} = ₹${itemTotal}`);
+      // Set variantId if provided (ObjectId reference)
+      if (item.variantId) {
+        validatedItem.variantId = item.variantId;
+      }
+      // Set productId if provided
+      if (item.productId) {
+        validatedItem.productId = item.productId;
+      }
+
+      validatedItems.push(validatedItem);
+      console.log(`  ✅ Item ${i + 1}: ${validatedItem.displayName} × ${item.quantity} @ ₹${item.price} = ₹${itemTotal}`);
     }
 
-    // Check grand total
-    if (Math.abs(calculatedTotal - grandTotal) > 0.01) {
-      console.warn(`⚠️  Grand total mismatch: received ₹${grandTotal}, calculated ₹${calculatedTotal}. Using calculated value.`);
-    }
+    // Calculate GST
+    const gst = calculateGST(calculatedSubtotal);
+    
+    console.log(`  📊 Subtotal: ₹${gst.subtotal} | CGST: ₹${gst.cgst} | SGST: ₹${gst.sgst} | Grand Total: ₹${gst.grandTotal}`);
 
     // ===== CREATE CUSTOMER IF NEW =====
     console.log('👤 Creating/finding customer...');
-    let customer = await Customer.findOne({ name: customerName.trim() });
-
-    if (!customer) {
-      const customerData = {
-        name: customerName.trim()
-      };
-      
-      // Only add phone if provided
-      if (customerPhone && customerPhone.trim()) {
-        customerData.phone = customerPhone.trim();
+    let customer = null;
+    try {
+      customer = await Customer.findOne({ name: customerName.trim() });
+      if (!customer) {
+        const customerData = { name: customerName.trim() };
+        if (customerPhone && customerPhone.trim()) {
+          customerData.phone = customerPhone.trim();
+        }
+        customer = new Customer(customerData);
+        await customer.save();
+        console.log('✅ New customer created:', customer._id);
+      } else {
+        console.log('✅ Existing customer found:', customer._id);
       }
-      
-      customer = new Customer(customerData);
-      await customer.save();
-      console.log('✅ New customer created:', customer._id);
-    } else {
-      console.log('✅ Existing customer found:', customer._id);
+    } catch (custErr) {
+      console.warn('⚠️  Customer creation error (non-fatal):', custErr.message);
     }
 
     // ===== CREATE SALE (BILL) =====
     console.log('📄 Creating bill record...');
     const saleData = {
       customerName: customerName.trim(),
-      customerId: customer._id,
+      customerPhone: (customerPhone || '').trim(),
+      customerGSTIN: (customerGSTIN || '').trim(),
+      customerAddress: (customerAddress || '').trim(),
       items: validatedItems,
-      grandTotal: calculatedTotal,
+      subtotal: gst.subtotal,
+      cgstRate: 9,
+      sgstRate: 9,
+      cgst: gst.cgst,
+      sgst: gst.sgst,
+      roundOff: gst.roundOff,
+      grandTotal: gst.grandTotal,
       date: date ? new Date(date) : new Date()
     };
 
-    // Only add phone if provided
-    if (customerPhone && customerPhone.trim()) {
-      saleData.customerPhone = customerPhone.trim();
+    if (customer) {
+      saleData.customerId = customer._id;
     }
 
     const sale = new Sale(saleData);
     const savedSale = await sale.save();
 
     console.log('🎉 Bill generated successfully!');
+    console.log('  Bill Number:', savedSale.billNumber);
     console.log('  Bill ID:', savedSale._id);
-    console.log('  Customer Name: ' + savedSale.customerName);
-    console.log('  Customer Phone: ' + (savedSale.customerPhone || '-'));
+    console.log('  Customer:', savedSale.customerName);
     console.log('  Items:', savedSale.items.length);
-    console.log('  Total: ₹', savedSale.grandTotal);
+    console.log('  Grand Total: ₹', savedSale.grandTotal);
 
     // ===== UPDATE INVENTORY =====
     console.log('📦 Updating inventory for sold items...');
+    const inventoryUpdates = [];
+
     for (const item of validatedItems) {
       try {
-        // Step 1: Search for Product by name and variant details
-        const productFilter = { 
-          isActive: true,
-          productName: item.productName
-        };
+        let inventoryItem = null;
 
-        if (item.gsm) {
-          productFilter.gsm = item.gsm;
-        }
-        if (item.size) {
-          productFilter.size = item.size;
-        }
-        if (item.color) {
-          productFilter.color = item.color;
+        // Strategy 1: Find by variantId (most accurate)
+        if (item.variantId) {
+          inventoryItem = await Inventory.findOne({
+            variantId: item.variantId,
+            isActive: true
+          }).setOptions({ _recursed: true }); // Skip auto-populate for performance
         }
 
-        console.log(`  🔍 Searching Product with GSM=${item.gsm}, Size=${item.size}, Color=${item.color}`);
-
-        const product = await Product.findOne(productFilter);
-
-        if (!product) {
-          console.warn(`⚠️  Product not found for: ${item.displayName}`);
-          console.warn(`     Filter:`, productFilter);
-          continue;
+        // Strategy 2: If no variantId match, search by populated variant displayName
+        if (!inventoryItem) {
+          const allInventory = await Inventory.find({ isActive: true });
+          inventoryItem = allInventory.find(inv => {
+            const variant = inv.variantId; // populated by pre-find hook
+            if (!variant) return false;
+            
+            // Match by display name
+            if (item.displayName && variant.displayName === item.displayName) return true;
+            
+            // Match by product name + specs
+            const product = variant.productId;
+            if (!product) return false;
+            
+            const nameMatch = product.name === item.productName;
+            const gsmMatch = !item.gsm || variant.gsm == item.gsm;
+            const sizeMatch = !item.size || variant.size === item.size;
+            const colorMatch = !item.color || variant.color === item.color;
+            
+            return nameMatch && gsmMatch && sizeMatch && colorMatch;
+          });
         }
-
-        // Step 2: Find inventory for this product
-        const inventoryItem = await Inventory.findOne({
-          productId: product._id,
-          isActive: true
-        });
 
         if (!inventoryItem) {
-          console.warn(`⚠️  Inventory item not found for product: ${product._id}`);
+          console.warn(`⚠️  Inventory item not found for: ${item.displayName}`);
           continue;
         }
 
-        // Check if enough stock
+        // Check stock level
         if (inventoryItem.quantity < item.quantity) {
-          console.warn(`⚠️  Insufficient stock for ${item.productName}: have ${inventoryItem.quantity}, sold ${item.quantity}`);
+          console.warn(`⚠️  Insufficient stock for ${item.displayName}: have ${inventoryItem.quantity}, sold ${item.quantity}`);
         }
 
         // Update quantity
         const oldQuantity = inventoryItem.quantity;
         inventoryItem.quantity = Math.max(0, inventoryItem.quantity - item.quantity);
+        inventoryItem.updatedAt = new Date();
         await inventoryItem.save();
 
-        console.log(`  ✅ Updated ${item.productName}: ${oldQuantity} → ${inventoryItem.quantity} (sold ${item.quantity})`);
+        console.log(`  ✅ Updated ${item.displayName}: ${oldQuantity} → ${inventoryItem.quantity} (sold ${item.quantity})`);
 
         // Record stock transaction
-        const transaction = new StockTransaction({
-          envelopeId: item.productId,
+        const transactionData = {
           type: 'OUT',
           quantity: item.quantity,
           date: new Date(),
           reference: savedSale._id,
-          reason: `Sale Bill #${savedSale._id.toString().slice(-6).toUpperCase()}`
-        });
+          reason: `Sale Bill #${savedSale.billNumber}`
+        };
+
+        // Set the correct reference on the transaction
+        if (item.variantId) {
+          transactionData.variantId = item.variantId;
+        }
+        if (inventoryItem.variantId && inventoryItem.variantId._id) {
+          transactionData.variantId = inventoryItem.variantId._id;
+        }
+
+        const transaction = new StockTransaction(transactionData);
         await transaction.save();
+
+        inventoryUpdates.push({
+          displayName: item.displayName,
+          oldQty: oldQuantity,
+          newQty: inventoryItem.quantity,
+          sold: item.quantity
+        });
 
         console.log(`  📝 Stock transaction recorded: OUT ${item.quantity} units`);
       } catch (invErr) {
-        console.error(`❌ Error updating inventory for ${item.productName}:`, invErr.message);
+        console.error(`❌ Error updating inventory for ${item.displayName}:`, invErr.message);
         // Don't fail the sale, just log the error
       }
     }
 
+    // ===== RESPOND =====
     res.status(201).json({
+      success: true,
       message: 'Bill generated successfully',
-      data: savedSale
+      data: savedSale,
+      inventoryUpdates
     });
+
   } catch (err) {
     console.error('❌ Error creating sale:', err);
+    console.error('Error details:', err.message);
+    if (err.errors) {
+      Object.keys(err.errors).forEach(key => {
+        console.error(`  Field "${key}":`, err.errors[key].message);
+      });
+    }
     res.status(500).json({
+      success: false,
       message: 'Failed to generate bill',
       error: err.message
     });
@@ -224,6 +302,7 @@ exports.getAllSales = async (req, res) => {
     const total = await Sale.countDocuments();
 
     res.status(200).json({
+      success: true,
       message: 'Sales retrieved successfully',
       data: sales,
       total,
@@ -232,6 +311,7 @@ exports.getAllSales = async (req, res) => {
   } catch (err) {
     console.error('❌ Error getting sales:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve sales',
       error: err.message
     });
@@ -249,16 +329,18 @@ exports.getSaleById = async (req, res) => {
     const sale = await Sale.findById(saleId).populate('customerId', 'name phone email address');
 
     if (!sale) {
-      return res.status(404).json({ message: 'Sale not found' });
+      return res.status(404).json({ success: false, message: 'Sale not found' });
     }
 
     res.status(200).json({
+      success: true,
       message: 'Sale retrieved successfully',
       data: sale
     });
   } catch (err) {
     console.error('❌ Error getting sale:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve sale',
       error: err.message
     });
@@ -280,6 +362,7 @@ exports.getSalesByCustomer = async (req, res) => {
       .limit(parseInt(limit));
 
     res.status(200).json({
+      success: true,
       message: 'Sales retrieved successfully',
       data: sales,
       count: sales.length
@@ -287,6 +370,7 @@ exports.getSalesByCustomer = async (req, res) => {
   } catch (err) {
     console.error('❌ Error getting sales by customer:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve sales',
       error: err.message
     });
@@ -299,7 +383,7 @@ exports.getSalesByCustomer = async (req, res) => {
 
 exports.getSalesSummary = async (req, res) => {
   try {
-    const { period = 'daily' } = req.query; // daily, weekly, monthly
+    const { period = 'daily' } = req.query;
 
     let groupBy;
     if (period === 'daily') {
@@ -323,6 +407,7 @@ exports.getSalesSummary = async (req, res) => {
     ]);
 
     res.status(200).json({
+      success: true,
       message: 'Sales summary retrieved',
       data: summary,
       period
@@ -330,6 +415,7 @@ exports.getSalesSummary = async (req, res) => {
   } catch (err) {
     console.error('❌ Error getting sales summary:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve sales summary',
       error: err.message
     });
@@ -343,62 +429,43 @@ exports.getSalesSummary = async (req, res) => {
 exports.getReports = async (req, res) => {
   try {
     // ===== TIME PERIOD CALCULATIONS =====
-    
-    // TODAY
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    // YESTERDAY
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    // WEEKLY (Last 7 days)
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - 7);
     
-    // MONTHLY (From first day of month)
     const monthStart = new Date(today);
     monthStart.setDate(1);
     
-    // YEARLY (From Jan 1)
     const yearStart = new Date(today.getFullYear(), 0, 1);
 
     console.log('📊 Dashboard Report Calculation:');
     console.log(`   Today: ${today.toDateString()} to ${tomorrow.toDateString()}`);
-    console.log(`   Weekly: ${weekStart.toDateString()} onwards`);
-    console.log(`   Monthly: ${monthStart.toDateString()} onwards`);
 
     // ===== FETCH SALES DATA =====
-    
-    // Today's sales
     const todaysSales = await Sale.find({
       date: { $gte: today, $lt: tomorrow }
     });
-
-    // Yesterday's sales
     const yesterdaysSales = await Sale.find({
       date: { $gte: yesterday, $lt: today }
     });
-
-    // Weekly sales
     const weeklySales = await Sale.find({
       date: { $gte: weekStart, $lt: tomorrow }
     });
-
-    // Monthly sales
     const monthlySales = await Sale.find({
       date: { $gte: monthStart, $lt: tomorrow }
     });
-
-    // Yearly sales
     const yearlySales = await Sale.find({
       date: { $gte: yearStart, $lt: tomorrow }
     });
 
     // ===== CALCULATE REVENUES =====
-    
     const todayRevenue = todaysSales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
     const yesterdayRevenue = yesterdaysSales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
     const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
@@ -407,11 +474,8 @@ exports.getReports = async (req, res) => {
 
     console.log(`   Today Revenue: ₹${todayRevenue} (${todaysSales.length} sales)`);
     console.log(`   Weekly Revenue: ₹${weeklyRevenue} (${weeklySales.length} sales)`);
-    console.log(`   Monthly Revenue: ₹${monthlyRevenue} (${monthlySales.length} sales)`);
-    console.log(`   Yearly Revenue: ₹${yearlyRevenue} (${yearlySales.length} sales)`);
 
     // ===== INVENTORY INSIGHTS =====
-    
     const inventoryItems = await Inventory.find({ isActive: true }).populate('productId');
     
     let totalStock = 0;
@@ -431,14 +495,7 @@ exports.getReports = async (req, res) => {
 
     const totalProducts = inventoryItems.length;
 
-    console.log(`📦 Inventory Insights:`);
-    console.log(`   Total Products: ${totalProducts}`);
-    console.log(`   Total Stock: ${totalStock} units`);
-    console.log(`   Total Stock Value: ₹${totalStockValue.toFixed(2)}`);
-    console.log(`   Low Stock Items: ${lowStockCount}`);
-
     // ===== BUILD RESPONSE =====
-    
     res.status(200).json({
       success: true,
       data: {
@@ -498,24 +555,20 @@ const getFilteredSales = async (filterType = 'all', customStartDate = null, cust
         endDate = new Date(today);
         endDate.setDate(endDate.getDate() + 1);
         break;
-
       case 'week':
         startDate = new Date(today);
         startDate.setDate(startDate.getDate() - 7);
         endDate = new Date(today);
         endDate.setDate(endDate.getDate() + 1);
         break;
-
       case 'month':
         startDate = new Date(today.getFullYear(), today.getMonth(), 1);
         endDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
         break;
-
       case 'year':
         startDate = new Date(today.getFullYear(), 0, 1);
         endDate = new Date(today.getFullYear() + 1, 0, 1);
         break;
-
       case 'custom':
         if (!customStartDate || !customEndDate) {
           throw new Error('Custom date range requires both start and end dates');
@@ -525,8 +578,7 @@ const getFilteredSales = async (filterType = 'all', customStartDate = null, cust
         endDate = new Date(customEndDate);
         endDate.setHours(23, 59, 59, 999);
         break;
-
-      default: // 'all'
+      default:
         const allSales = await Sale.find()
           .populate('customerId', 'name phone')
           .sort({ date: -1 });
@@ -554,15 +606,13 @@ exports.getFilteredSalesData = async (req, res) => {
   try {
     const { filter = 'all', startDate = null, endDate = null } = req.query;
 
-    console.log(`📊 Filtering sales by: ${filter}`, {
-      startDate,
-      endDate
-    });
+    console.log(`📊 Filtering sales by: ${filter}`);
 
     const filteredSales = await getFilteredSales(filter, startDate, endDate);
 
     if (!filteredSales || filteredSales.length === 0) {
       return res.status(200).json({
+        success: true,
         message: 'No records found for the selected period',
         data: [],
         count: 0,
@@ -571,13 +621,13 @@ exports.getFilteredSalesData = async (req, res) => {
       });
     }
 
-    // Calculate totals
     const total = filteredSales.reduce((sum, sale) => sum + (sale.grandTotal || 0), 0);
     const totalItems = filteredSales.reduce((sum, sale) => {
       return sum + (sale.items ? sale.items.length : 0);
     }, 0);
 
     res.status(200).json({
+      success: true,
       message: `Found ${filteredSales.length} sales records`,
       data: filteredSales,
       count: filteredSales.length,
@@ -588,6 +638,7 @@ exports.getFilteredSalesData = async (req, res) => {
   } catch (err) {
     console.error('❌ Error getting filtered sales:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve filtered sales',
       error: err.message
     });
@@ -608,52 +659,52 @@ exports.exportToExcel = async (req, res) => {
 
     if (!sales || sales.length === 0) {
       return res.status(400).json({
+        success: false,
         message: 'No data available to export'
       });
     }
 
-    // Create workbook and worksheet
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sales Report');
 
-    // Define columns
     worksheet.columns = [
-      { header: 'Bill ID', key: 'billId', width: 15 },
+      { header: 'Bill No.', key: 'billNumber', width: 15 },
       { header: 'Date', key: 'date', width: 12 },
       { header: 'Time', key: 'time', width: 10 },
       { header: 'Customer Name', key: 'customerName', width: 20 },
       { header: 'Items Count', key: 'itemsCount', width: 12 },
-      { header: 'Total Amount (₹)', key: 'totalAmount', width: 15 }
+      { header: 'Subtotal (₹)', key: 'subtotal', width: 15 },
+      { header: 'CGST (₹)', key: 'cgst', width: 12 },
+      { header: 'SGST (₹)', key: 'sgst', width: 12 },
+      { header: 'Grand Total (₹)', key: 'totalAmount', width: 15 }
     ];
 
-    // Style header row
     worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
     worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF366092' } };
     worksheet.getRow(1).alignment = { horizontal: 'center', vertical: 'center' };
 
-    // Add data rows
     let totalRevenue = 0;
     let totalItemsSold = 0;
 
-    sales.forEach((sale, index) => {
+    sales.forEach((sale) => {
       const saleDate = new Date(sale.date);
-      const dateStr = saleDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateStr = saleDate.toISOString().split('T')[0];
       const timeStr = saleDate.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
       });
 
       const itemsCount = sale.items ? sale.items.length : 0;
       const totalAmount = sale.grandTotal || 0;
 
       worksheet.addRow({
-        billId: sale._id.toString().slice(-8).toUpperCase(),
+        billNumber: sale.billNumber || sale._id.toString().slice(-8).toUpperCase(),
         date: dateStr,
         time: timeStr,
         customerName: sale.customerName || 'N/A',
         itemsCount: itemsCount,
+        subtotal: sale.subtotal || 0,
+        cgst: sale.cgst || 0,
+        sgst: sale.sgst || 0,
         totalAmount: totalAmount
       });
 
@@ -661,30 +712,18 @@ exports.exportToExcel = async (req, res) => {
       totalItemsSold += itemsCount;
     });
 
-    // Add summary rows
     const lastRow = worksheet.lastRow.number;
-    worksheet.addRow({}); // Empty row
+    worksheet.addRow({});
     worksheet.addRow({
       customerName: 'TOTAL',
       itemsCount: totalItemsSold,
       totalAmount: totalRevenue
     });
 
-    // Style summary row
     const summaryRow = worksheet.getRow(lastRow + 2);
     summaryRow.font = { bold: true, size: 11 };
     summaryRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7E6E6' } };
 
-    // Format currency columns
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) {
-        const totalCell = row.getCell('totalAmount');
-        totalCell.numFmt = '₹ #,##0.00';
-        totalCell.alignment = { horizontal: 'right' };
-      }
-    });
-
-    // Generate file
     const fileName = `Sales_Report_${filter}_${new Date().toISOString().split('T')[0]}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -697,6 +736,7 @@ exports.exportToExcel = async (req, res) => {
   } catch (err) {
     console.error('❌ Error exporting to Excel:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to export to Excel',
       error: err.message
     });
@@ -717,41 +757,32 @@ exports.exportToCSV = async (req, res) => {
 
     if (!sales || sales.length === 0) {
       return res.status(400).json({
+        success: false,
         message: 'No data available to export'
       });
     }
 
-    // Create CSV header
-    let csvContent = 'Bill ID,Date,Time,Customer Name,Items Count,Total Amount (₹)\n';
+    let csvContent = 'Bill No.,Date,Time,Customer Name,Items Count,Subtotal,CGST,SGST,Grand Total\n';
 
     let totalRevenue = 0;
-    let totalItemsSold = 0;
 
-    // Add data rows
     sales.forEach((sale) => {
       const saleDate = new Date(sale.date);
       const dateStr = saleDate.toISOString().split('T')[0];
       const timeStr = saleDate.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
       });
 
-      const billId = sale._id.toString().slice(-8).toUpperCase();
+      const billNo = sale.billNumber || sale._id.toString().slice(-8).toUpperCase();
       const customerName = sale.customerName || 'N/A';
       const itemsCount = sale.items ? sale.items.length : 0;
       const totalAmount = sale.grandTotal || 0;
 
-      csvContent += `"${billId}","${dateStr}","${timeStr}","${customerName}",${itemsCount},${totalAmount}\n`;
-
+      csvContent += `"${billNo}","${dateStr}","${timeStr}","${customerName}",${itemsCount},${sale.subtotal || 0},${sale.cgst || 0},${sale.sgst || 0},${totalAmount}\n`;
       totalRevenue += totalAmount;
-      totalItemsSold += itemsCount;
     });
 
-    // Add summary
-    csvContent += '\n"TOTAL","","","",';
-    csvContent += `${totalItemsSold},${totalRevenue}\n`;
+    csvContent += `\n"TOTAL","","","",,,${totalRevenue}\n`;
 
     const fileName = `Sales_Report_${filter}_${new Date().toISOString().split('T')[0]}.csv`;
 
@@ -763,6 +794,7 @@ exports.exportToCSV = async (req, res) => {
   } catch (err) {
     console.error('❌ Error exporting to CSV:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to export to CSV',
       error: err.message
     });
@@ -770,7 +802,7 @@ exports.exportToCSV = async (req, res) => {
 };
 
 // ============================================================================
-// GET SALES STATISTICS (FOR UI FILTERING)
+// GET SALES STATISTICS
 // ============================================================================
 
 exports.getSalesStatistics = async (req, res) => {
@@ -781,6 +813,7 @@ exports.getSalesStatistics = async (req, res) => {
 
     if (!filteredSales || filteredSales.length === 0) {
       return res.status(200).json({
+        success: true,
         message: 'No records found',
         data: {
           totalSales: 0,
@@ -799,6 +832,7 @@ exports.getSalesStatistics = async (req, res) => {
     const averageOrderValue = totalSales / totalOrders;
 
     res.status(200).json({
+      success: true,
       message: 'Statistics retrieved successfully',
       data: {
         totalSales: parseFloat(totalSales.toFixed(2)),
@@ -810,6 +844,7 @@ exports.getSalesStatistics = async (req, res) => {
   } catch (err) {
     console.error('❌ Error getting statistics:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to retrieve statistics',
       error: err.message
     });
@@ -826,6 +861,7 @@ exports.searchBills = async (req, res) => {
 
     if (!query || query.trim().length === 0) {
       return res.status(200).json({
+        success: true,
         message: 'Please enter a search query',
         data: [],
         count: 0
@@ -834,10 +870,10 @@ exports.searchBills = async (req, res) => {
 
     const searchRegex = new RegExp(query, 'i');
 
-    // Search by bill ID or customer name
+    // Search by bill number, bill ID, or customer name
     const sales = await Sale.find({
       $or: [
-        { _id: searchRegex },
+        { billNumber: searchRegex },
         { customerName: searchRegex }
       ]
     })
@@ -846,6 +882,7 @@ exports.searchBills = async (req, res) => {
       .limit(parseInt(limit));
 
     res.status(200).json({
+      success: true,
       message: `Found ${sales.length} bills matching "${query}"`,
       data: sales,
       count: sales.length,
@@ -854,6 +891,7 @@ exports.searchBills = async (req, res) => {
   } catch (err) {
     console.error('❌ Error searching bills:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to search bills',
       error: err.message
     });
@@ -873,21 +911,39 @@ exports.deleteBill = async (req, res) => {
     const sale = await Sale.findById(saleId);
 
     if (!sale) {
-      return res.status(404).json({ message: 'Bill not found' });
+      return res.status(404).json({ success: false, message: 'Bill not found' });
     }
 
-    // Optional: Restore inventory if needed
-    // For now, we'll just delete the bill
-    // In future, you might want to reverse the stock reduction
+    // Restore inventory quantities
+    for (const item of sale.items) {
+      try {
+        if (item.variantId) {
+          const inventoryItem = await Inventory.findOne({ 
+            variantId: item.variantId, 
+            isActive: true 
+          }).setOptions({ _recursed: true });
+          
+          if (inventoryItem) {
+            inventoryItem.quantity += item.quantity;
+            await inventoryItem.save();
+            console.log(`  ↩️ Restored ${item.quantity} units for ${item.displayName}`);
+          }
+        }
+      } catch (restoreErr) {
+        console.warn(`  ⚠️ Could not restore stock for ${item.displayName}:`, restoreErr.message);
+      }
+    }
 
     await Sale.findByIdAndDelete(saleId);
 
     console.log(`✅ Bill deleted: ${saleId}`);
 
     res.status(200).json({
+      success: true,
       message: 'Bill deleted successfully',
       data: {
         deletedId: saleId,
+        deletedBillNumber: sale.billNumber,
         deletedCustomer: sale.customerName,
         deletedAmount: sale.grandTotal
       }
@@ -895,6 +951,7 @@ exports.deleteBill = async (req, res) => {
   } catch (err) {
     console.error('❌ Error deleting bill:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to delete bill',
       error: err.message
     });
@@ -915,28 +972,25 @@ exports.updateBill = async (req, res) => {
     const sale = await Sale.findById(saleId);
 
     if (!sale) {
-      return res.status(404).json({ message: 'Bill not found' });
+      return res.status(404).json({ success: false, message: 'Bill not found' });
     }
 
-    // Only allow updating customer info, not items or total
-    if (customerName) {
-      sale.customerName = customerName.trim();
-    }
-    if (customerPhone !== undefined) {
-      sale.customerPhone = customerPhone || '';
-    }
+    if (customerName) sale.customerName = customerName.trim();
+    if (customerPhone !== undefined) sale.customerPhone = customerPhone || '';
 
     await sale.save();
 
     console.log(`✅ Bill updated: ${saleId}`);
 
     res.status(200).json({
+      success: true,
       message: 'Bill updated successfully',
       data: sale
     });
   } catch (err) {
     console.error('❌ Error updating bill:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to update bill',
       error: err.message
     });
@@ -956,19 +1010,18 @@ exports.generatePDF = async (req, res) => {
     const sale = await Sale.findById(saleId).populate('customerId', 'name phone email address');
 
     if (!sale) {
-      return res.status(404).json({ message: 'Bill not found' });
+      return res.status(404).json({ success: false, message: 'Bill not found' });
     }
 
-    // For now, return the sale data in a format that can be printed
-    // Frontend can use html2pdf or similar to convert to PDF
-
     res.status(200).json({
+      success: true,
       message: 'Bill data retrieved for PDF generation',
       data: sale
     });
   } catch (err) {
     console.error('❌ Error generating PDF:', err);
     res.status(500).json({
+      success: false,
       message: 'Failed to generate PDF',
       error: err.message
     });

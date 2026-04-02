@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Trash2, Plus, Minus, FileText } from 'lucide-react';
+import { ShoppingCart, Trash2, Plus, Minus, FileText, Eye, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { envelopeService, customerService, saleService, stockService } from '../services/api';
 import { realTimeSyncService } from '../services/realTimeSync';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent } from '../components/ui/Card';
 import { InvoiceBill } from '../components/ui/InvoiceBill';
+import { ViewBillModal } from '../components/ui/ViewBillModal';
 import { BillingProductSelector } from '../components/ui/BillingProductSelector';
 
 export const Billing = () => {
@@ -18,18 +19,48 @@ export const Billing = () => {
   const [sales, setSales] = useState([]);
   const [lastSale, setLastSale] = useState(null);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isViewBillModalOpen, setIsViewBillModalOpen] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
 
   // Fetch sales history
   useEffect(() => {
     const fetchSales = async () => {
       try {
+        console.log('🔄 Fetching sales...');
         const res = await saleService.getAll({ limit: 100 });
-        setSales(res.data?.data || res.data || []);
+        console.log('📦 API Response:', res);
+        
+        // Handle different response structures
+        let salesData = [];
+        if (Array.isArray(res.data)) {
+          salesData = res.data;
+        } else if (res.data?.data && Array.isArray(res.data.data)) {
+          salesData = res.data.data;
+        } else if (res.data?.success && Array.isArray(res.data)) {
+          salesData = res.data;
+        }
+        
+        console.log('✅ Bills History fetched:', salesData.length, 'bills');
+        setSales(salesData);
       } catch (err) {
-        console.error('Error fetching sales:', err);
+        console.error('❌ Error fetching sales:', err);
+        setSales([]);
       }
     };
     fetchSales();
+    
+    // Subscribe to real-time updates
+    const handleSaleUpdate = () => {
+      console.log('🔄 Sale updated, refreshing bills...');
+      setTimeout(() => fetchSales(), 500);
+    };
+    
+    const unsubscribe = realTimeSyncService.on('sale', handleSaleUpdate);
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const addToCart = (product) => {
@@ -161,8 +192,14 @@ export const Billing = () => {
 
       // Refresh sales list
       const refreshRes = await saleService.getAll({ limit: 100 });
-      setSales(refreshRes.data?.data || refreshRes.data || []);
-      console.log('🎉 Checkout completed successfully');
+      let updatedSales = [];
+      if (Array.isArray(refreshRes.data)) {
+        updatedSales = refreshRes.data;
+      } else if (refreshRes.data?.data && Array.isArray(refreshRes.data.data)) {
+        updatedSales = refreshRes.data.data;
+      }
+      setSales(updatedSales);
+      console.log('🎉 Checkout completed successfully, sales updated:', updatedSales.length);
     } catch (err) {
       console.error('❌ Checkout error full details:', err);
       console.error('Error response:', err.response);
@@ -369,6 +406,91 @@ export const Billing = () => {
           </Card>
         </div>
       </div>
+
+      {/* Bills History Section */}
+      {sales && sales.length > 0 ? (
+        <div className="mt-8 pt-8 border-t-2 border-gray-200 dark:border-slate-700">
+          <Card className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
+            <CardContent>
+              <div className="flex items-center gap-2 mb-6">
+                <Clock className="w-6 h-6" style={{ color: 'var(--primary)' }} />
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Recent Bills ({sales.length})</h3>
+              </div>
+            
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-700">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Customer</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Items</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Amount</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">Date</th>
+                      <th className="text-center py-3 px-4 font-semibold text-gray-700 dark:text-gray-300">View</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.slice(0, 5).map((sale) => (
+                      <tr 
+                        key={sale._id} 
+                        className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                      >
+                        <td className="py-3 px-4 text-gray-900 dark:text-white font-semibold">
+                          {sale.customerName || 'N/A'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
+                          {sale.items?.length || 0} item(s)
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-gray-900 dark:text-white">
+                          ₹{(sale.grandTotal || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-sm">
+                          {new Date(sale.createdAt).toLocaleDateString('en-IN')} {new Date(sale.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => {
+                              setSelectedBill(sale);
+                              setIsViewBillModalOpen(true);
+                            }}
+                            className="inline-flex items-center justify-center p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                            title="View Bill"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {sales.length > 5 && (
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Showing 5 of {sales.length} bills • 
+                    <a href="/bill-history" className="text-blue-600 dark:text-blue-400 hover:underline font-semibold ml-1">View all</a>
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="mt-8 text-center py-6 text-gray-500 dark:text-gray-400">
+          <p>No bills yet. Create your first sale to see the history here.</p>
+        </div>
+      )}
+
+      {/* View Bill Modal */}
+      {isViewBillModalOpen && selectedBill && (
+        <ViewBillModal
+          bill={selectedBill}
+          onClose={() => {
+            setIsViewBillModalOpen(false);
+            setSelectedBill(null);
+          }}
+        />
+      )}
 
       {/* Invoice Modal */}
       <InvoiceBill 

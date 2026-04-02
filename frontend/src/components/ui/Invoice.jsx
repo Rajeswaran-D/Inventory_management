@@ -1,79 +1,387 @@
 /**
- * PROFESSIONAL INVOICE COMPONENT
- * Generates print-ready bills matching Swamy Envelope's physical bill format
+ * PROFESSIONAL INVOICE COMPONENT — SWAMY ENVELOPE
  * 
- * Features:
- * - Company header with GSTIN
- * - Customer details
- * - Item table with GST calculations
- * - Amount in words
- * - Print-friendly A4 layout
- * - Footer with signatures and bank details
+ * Generates print-ready bills matching the exact physical bill format:
+ * - Company header with GSTIN, address, phone
+ * - CASH BILL badge with Bill No. and Date
+ * - Customer section with GSTIN
+ * - Itemized table: S.No | Description | Qty | Rate | Amount
+ * - GST breakdown: Subtotal, CGST 9%, SGST 9%, IGST, Round Off
+ * - Grand Total with amount in words
+ * - Bank details + signature blocks
+ * - A4 print-ready layout with blue borders
  */
 
-import React, { useState } from 'react';
-import { Printer, Download, X } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Printer, X } from 'lucide-react';
 import { numberToWords, amountInWords } from '../../utils/numberToWords';
 import { calculateTaxBreakdown } from '../../utils/gstCalculations';
 
 export const Invoice = ({ sale, onClose }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const invoiceRef = useRef(null);
 
   if (!sale) return null;
 
   // =========================================================================
   // DATA EXTRACTION
   // =========================================================================
-
-  const billNumber = sale._id.substring(0, 8).toUpperCase();
-  const billDate = new Date(sale.date || sale.createdAt).toLocaleDateString('en-IN');
-  const customerName = sale.customerName || 'N/A';
+  const billNumber = sale.billNumber || sale._id?.substring(0, 8).toUpperCase() || 'DRAFT';
+  const billDate = new Date(sale.date || sale.createdAt).toLocaleDateString('en-IN', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
+  const customerName = sale.customerName || 'Walk-in Customer';
   const customerPhone = sale.customerPhone || '';
+  const customerGSTIN = sale.customerGSTIN || '';
 
-  // Calculate items subtotal and tax breakdown
-  const itemsSubtotal = sale.items.reduce((sum, item) => {
-    const itemTotal = (item.quantity || 0) * (item.price || 0);
-    return sum + itemTotal;
+  // Tax calculation — use stored values if available, otherwise calculate
+  const subtotal = sale.subtotal || sale.items.reduce((sum, item) => {
+    return sum + ((item.quantity || 0) * (item.price || 0));
   }, 0);
 
-  const taxBreakdown = calculateTaxBreakdown(itemsSubtotal, 9, 9);
+  const taxBreakdown = (sale.cgst !== undefined && sale.cgst !== null) 
+    ? {
+        subtotal: sale.subtotal || subtotal,
+        cgst: sale.cgst,
+        sgst: sale.sgst,
+        roundOff: sale.roundOff || 0,
+        grandTotal: sale.grandTotal
+      }
+    : calculateTaxBreakdown(subtotal, 9, 9);
 
   // =========================================================================
   // PRINT HANDLER
   // =========================================================================
-
   const handlePrint = () => {
     setIsPrinting(true);
     setTimeout(() => {
       window.print();
       setIsPrinting(false);
-    }, 100);
+    }, 200);
   };
+
+  // =========================================================================
+  // STYLES — Invoice-specific inline styles for exact rendering
+  // =========================================================================
+  const S = {
+    page: {
+      width: '210mm',
+      minHeight: '297mm',
+      margin: '0 auto',
+      padding: '12mm 15mm',
+      fontFamily: "'Segoe UI', 'Arial', sans-serif",
+      fontSize: '12px',
+      color: '#1a1a2e',
+      background: '#fff',
+      boxSizing: 'border-box',
+    },
+    border: { border: '2px solid #1e3a5f' },
+    borderThin: { border: '1px solid #1e3a5f' },
+    borderBottom: { borderBottom: '1px solid #1e3a5f' },
+    headerContainer: {
+      border: '2px solid #1e3a5f',
+      padding: '0',
+    },
+    companyName: {
+      fontSize: '28px',
+      fontWeight: '800',
+      color: '#1e3a5f',
+      letterSpacing: '2px',
+      marginBottom: '4px',
+    },
+    cashBill: {
+      border: '2px solid #1e3a5f',
+      padding: '6px 20px',
+      fontSize: '16px',
+      fontWeight: '700',
+      color: '#1e3a5f',
+      letterSpacing: '3px',
+      display: 'inline-block',
+    },
+    th: {
+      border: '1px solid #1e3a5f',
+      padding: '8px 10px',
+      fontSize: '11px',
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      backgroundColor: '#e8f0fe',
+      color: '#1e3a5f',
+    },
+    td: {
+      border: '1px solid #1e3a5f',
+      padding: '7px 10px',
+      fontSize: '11px',
+      verticalAlign: 'middle',
+    },
+    tdRight: {
+      border: '1px solid #1e3a5f',
+      padding: '7px 10px',
+      fontSize: '11px',
+      textAlign: 'right',
+      fontFamily: "'Courier New', monospace",
+    },
+    tdCenter: {
+      border: '1px solid #1e3a5f',
+      padding: '7px 10px',
+      fontSize: '11px',
+      textAlign: 'center',
+    },
+    label: {
+      fontWeight: '600',
+      color: '#1e3a5f',
+      fontSize: '11px',
+    },
+    value: {
+      fontSize: '11px',
+      color: '#333',
+    },
+    grandTotalRow: {
+      fontWeight: '800',
+      fontSize: '14px',
+      color: '#1e3a5f',
+    }
+  };
+
+  // =========================================================================
+  // INVOICE CONTENT — Used for both preview and print
+  // =========================================================================
+  const InvoiceBody = () => (
+    <div className="invoice-page" style={S.page}>
+      
+      {/* ================================================================
+          HEADER SECTION
+          ================================================================ */}
+      <div style={{ ...S.headerContainer, marginBottom: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          
+          {/* LEFT: Company Details */}
+          <div style={{ padding: '16px 20px', flex: '1' }}>
+            <h1 style={S.companyName}>SWAMY ENVELOPE</h1>
+            <div style={{ borderLeft: '3px solid #1e3a5f', paddingLeft: '12px', marginTop: '6px' }}>
+              <p style={{ fontSize: '11px', color: '#444', lineHeight: '1.6' }}>
+                <strong>Regd. Office:</strong> 225, 6th Street,<br />
+                Gandhipuram, Coimbatore - 641012<br />
+                <strong>Phone:</strong> +91-9876543210 &nbsp;|&nbsp; <strong>Email:</strong> info@swamyenvelope.com<br />
+                <strong>GSTIN:</strong> <span style={{ fontFamily: 'Courier New', fontWeight: '600', letterSpacing: '1px' }}>33AABCU9603R1Z0</span>
+              </p>
+            </div>
+          </div>
+
+          {/* RIGHT: Cash Bill + Bill Info */}
+          <div style={{ padding: '16px 20px', textAlign: 'right', minWidth: '200px' }}>
+            <div style={{ marginBottom: '12px', textAlign: 'center' }}>
+              <span style={S.cashBill}>CASH BILL</span>
+            </div>
+            <table style={{ marginLeft: 'auto', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr>
+                  <td style={{ ...S.label, padding: '4px 12px 4px 0', textAlign: 'left' }}>Bill No.</td>
+                  <td style={{ padding: '4px 0', fontWeight: '700', fontFamily: 'Courier New', letterSpacing: '1px', color: '#1e3a5f' }}>: {billNumber}</td>
+                </tr>
+                <tr>
+                  <td style={{ ...S.label, padding: '4px 12px 4px 0', textAlign: 'left' }}>Date</td>
+                  <td style={{ padding: '4px 0', fontWeight: '600' }}>: {billDate}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ================================================================
+          CUSTOMER SECTION
+          ================================================================ */}
+      <div style={{ borderLeft: '2px solid #1e3a5f', borderRight: '2px solid #1e3a5f', borderBottom: '2px solid #1e3a5f', padding: '12px 20px', marginBottom: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ ...S.label, marginBottom: '4px', fontSize: '12px' }}>To:</p>
+            <p style={{ fontWeight: '700', fontSize: '14px', color: '#1a1a2e' }}>{customerName}</p>
+            {customerPhone && (
+              <p style={S.value}><span style={S.label}>Phone:</span> {customerPhone}</p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            {customerGSTIN && (
+              <p style={S.value}><span style={S.label}>GSTIN:</span> <span style={{ fontFamily: 'Courier New' }}>{customerGSTIN}</span></p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ================================================================
+          ITEMS TABLE
+          ================================================================ */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 0 }}>
+        <thead>
+          <tr>
+            <th style={{ ...S.th, width: '50px', textAlign: 'center' }}>S.No</th>
+            <th style={{ ...S.th, textAlign: 'left' }}>Description</th>
+            <th style={{ ...S.th, width: '80px', textAlign: 'center' }}>Qty</th>
+            <th style={{ ...S.th, width: '100px', textAlign: 'right' }}>Rate (₹)</th>
+            <th style={{ ...S.th, width: '120px', textAlign: 'right' }}>Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sale.items && sale.items.length > 0 ? (
+            sale.items.map((item, index) => {
+              const itemTotal = item.itemTotal || (item.quantity || 0) * (item.price || 0);
+              const description = formatItemDescription(item);
+
+              return (
+                <tr key={index}>
+                  <td style={S.tdCenter}>{index + 1}</td>
+                  <td style={S.td}>{description}</td>
+                  <td style={S.tdCenter}>{item.quantity}</td>
+                  <td style={S.tdRight}>{(item.price || 0).toFixed(2)}</td>
+                  <td style={{ ...S.tdRight, fontWeight: '600' }}>{itemTotal.toFixed(2)}</td>
+                </tr>
+              );
+            })
+          ) : (
+            <tr>
+              <td colSpan="5" style={{ ...S.td, textAlign: 'center' }}>No items</td>
+            </tr>
+          )}
+
+          {/* Empty rows to fill minimum 8 rows */}
+          {sale.items && sale.items.length < 8 &&
+            Array.from({ length: 8 - sale.items.length }).map((_, i) => (
+              <tr key={`empty-${i}`}>
+                <td style={S.tdCenter}>&nbsp;</td>
+                <td style={S.td}>&nbsp;</td>
+                <td style={S.tdCenter}>&nbsp;</td>
+                <td style={S.tdRight}>&nbsp;</td>
+                <td style={S.tdRight}>&nbsp;</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+
+      {/* ================================================================
+          SUMMARY & TAX SECTION
+          ================================================================ */}
+      <div style={{ border: '2px solid #1e3a5f', borderTop: 'none' }}>
+        <div style={{ display: 'flex' }}>
+          
+          {/* LEFT: Amount in Words */}
+          <div style={{ flex: '1', borderRight: '1px solid #1e3a5f', padding: '14px 16px' }}>
+            <p style={{ ...S.label, marginBottom: '6px', fontSize: '11px' }}>Amount in Words:</p>
+            <p style={{ fontSize: '12px', fontWeight: '700', color: '#1a1a2e', lineHeight: '1.5', fontStyle: 'italic' }}>
+              {amountInWords(taxBreakdown.grandTotal)}
+            </p>
+          </div>
+
+          {/* RIGHT: Tax Calculation */}
+          <div style={{ width: '280px', padding: '10px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr>
+                  <td style={{ padding: '3px 0', fontSize: '11px', color: '#555' }}>Subtotal</td>
+                  <td style={{ padding: '3px 0', fontSize: '11px', textAlign: 'right', fontFamily: 'Courier New' }}>₹ {taxBreakdown.subtotal.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '3px 0', fontSize: '11px', color: '#555' }}>CGST @ 9%</td>
+                  <td style={{ padding: '3px 0', fontSize: '11px', textAlign: 'right', fontFamily: 'Courier New' }}>₹ {taxBreakdown.cgst.toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '3px 0', fontSize: '11px', color: '#555' }}>SGST @ 9%</td>
+                  <td style={{ padding: '3px 0', fontSize: '11px', textAlign: 'right', fontFamily: 'Courier New' }}>₹ {taxBreakdown.sgst.toFixed(2)}</td>
+                </tr>
+                {(sale.igst > 0) && (
+                  <tr>
+                    <td style={{ padding: '3px 0', fontSize: '11px', color: '#555' }}>IGST</td>
+                    <td style={{ padding: '3px 0', fontSize: '11px', textAlign: 'right', fontFamily: 'Courier New' }}>₹ {sale.igst.toFixed(2)}</td>
+                  </tr>
+                )}
+                {taxBreakdown.roundOff !== 0 && (
+                  <tr>
+                    <td style={{ padding: '3px 0', fontSize: '11px', color: '#888' }}>Round Off</td>
+                    <td style={{ padding: '3px 0', fontSize: '11px', textAlign: 'right', fontFamily: 'Courier New', color: '#888' }}>₹ {taxBreakdown.roundOff.toFixed(2)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td colSpan="2" style={{ borderTop: '2px solid #1e3a5f', padding: '0' }}></td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '6px 0', ...S.grandTotalRow }}>GRAND TOTAL</td>
+                  <td style={{ padding: '6px 0', textAlign: 'right', ...S.grandTotalRow, fontFamily: 'Courier New', letterSpacing: '1px' }}>₹ {taxBreakdown.grandTotal.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ================================================================
+          FOOTER SECTION
+          ================================================================ */}
+      <div style={{ border: '2px solid #1e3a5f', borderTop: 'none' }}>
+        
+        {/* Signatures Row */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #1e3a5f' }}>
+          <div style={{ flex: '1', padding: '12px 16px', borderRight: '1px solid #1e3a5f' }}>
+            <p style={{ fontSize: '10px', fontWeight: '600', color: '#555', marginBottom: '4px' }}>
+              Received the above goods in good condition
+            </p>
+            <div style={{ height: '50px', borderBottom: '1px solid #ccc', marginTop: '30px' }}></div>
+            <p style={{ textAlign: 'center', fontSize: '10px', color: '#888', marginTop: '4px' }}>Receiver's Signature</p>
+          </div>
+          <div style={{ flex: '1', padding: '12px 16px' }}>
+            <p style={{ fontSize: '10px', fontWeight: '700', color: '#1e3a5f' }}>
+              For SWAMY ENVELOPE
+            </p>
+            <div style={{ height: '50px', borderBottom: '1px solid #ccc', marginTop: '30px' }}></div>
+            <p style={{ textAlign: 'center', fontSize: '10px', color: '#888', marginTop: '4px' }}>Authorized Signature</p>
+          </div>
+        </div>
+
+        {/* Bank Details */}
+        <div style={{ padding: '12px 16px' }}>
+          <p style={{ fontWeight: '700', fontSize: '11px', color: '#1e3a5f', marginBottom: '6px' }}>Bank Details:</p>
+          <div style={{ display: 'flex', gap: '40px', fontSize: '10px', color: '#555' }}>
+            <p><strong>Bank:</strong> ICICI Bank Limited</p>
+            <p><strong>A/C No.:</strong> 1234567890123456</p>
+            <p><strong>IFSC:</strong> ICIC0000001</p>
+            <p><strong>Branch:</strong> Gandhipuram</p>
+          </div>
+          <p style={{ textAlign: 'center', marginTop: '10px', fontSize: '10px', fontStyle: 'italic', color: '#888' }}>
+            "Thank you for your business. Goods once sold will not be taken back. Subject to Coimbatore jurisdiction."
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 
   // =========================================================================
   // RENDER
   // =========================================================================
-
   return (
     <>
       {/* MODAL BACKDROP */}
       {!isPrinting && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+        >
+          <div className="bg-white rounded-lg shadow-2xl w-full" style={{ maxWidth: '900px', maxHeight: '92vh', overflow: 'auto' }}>
             {/* TOOLBAR */}
-            <div className="sticky top-0 bg-gray-100 border-b border-gray-300 px-6 py-3 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-800">Invoice Preview</h2>
+            <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between" style={{ background: '#f0f4ff' }}>
+              <h2 className="text-xl font-bold" style={{ color: '#1e3a5f' }}>
+                Invoice #{billNumber}
+              </h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 text-white rounded-lg font-semibold transition-all hover:shadow-lg"
+                  style={{ background: '#1e3a5f' }}
                 >
                   <Printer className="w-4 h-4" />
-                  Print/Download
+                  Print / Save PDF
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
                 >
                   <X className="w-4 h-4" />
                   Close
@@ -81,34 +389,20 @@ export const Invoice = ({ sale, onClose }) => {
               </div>
             </div>
 
-            {/* INVOICE CONTENT */}
-            <div className="p-8" id="invoice-content">
-              <InvoiceContent
-                sale={sale}
-                billNumber={billNumber}
-                billDate={billDate}
-                customerName={customerName}
-                customerPhone={customerPhone}
-                itemsSubtotal={itemsSubtotal}
-                taxBreakdown={taxBreakdown}
-              />
+            {/* INVOICE PREVIEW */}
+            <div className="p-6" style={{ background: '#f5f5f5' }}>
+              <div ref={invoiceRef} style={{ background: '#fff', boxShadow: '0 2px 20px rgba(0,0,0,0.1)' }}>
+                <InvoiceBody />
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* PRINT VIEW */}
+      {/* PRINT VIEW — Only rendered during print */}
       {isPrinting && (
         <div className="print-only" id="print-invoice">
-          <InvoiceContent
-            sale={sale}
-            billNumber={billNumber}
-            billDate={billDate}
-            customerName={customerName}
-            customerPhone={customerPhone}
-            itemsSubtotal={itemsSubtotal}
-            taxBreakdown={taxBreakdown}
-          />
+          <InvoiceBody />
         </div>
       )}
     </>
@@ -116,253 +410,22 @@ export const Invoice = ({ sale, onClose }) => {
 };
 
 /**
- * INVOICE CONTENT - Reusable for both preview and print
- */
-const InvoiceContent = ({
-  sale,
-  billNumber,
-  billDate,
-  customerName,
-  customerPhone,
-  itemsSubtotal,
-  taxBreakdown
-}) => {
-  return (
-    <div className="invoice-page w-full" style={{ maxWidth: '210mm', margin: '0 auto' }}>
-      {/* ====================================================================
-          HEADER SECTION
-          ==================================================================== */}
-
-      <div className="border border-gray-800 p-6 mb-0">
-        {/* Company Info Row */}
-        <div className="grid grid-cols-3 gap-8 mb-8">
-          {/* Left: Company Details */}
-          <div className="col-span-2">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              SWAMY ENVELOPE
-            </h1>
-            <div className="text-sm text-gray-700 space-y-1 border-l-4 border-gray-800 pl-4">
-              <p>
-                <span className="font-semibold">Regd. Office:</span> 225, 6th Street,
-              </p>
-              <p>Gandhipuram, Coimbatore - 641012</p>
-              <p>
-                <span className="font-semibold">Phone:</span> +91-XXXXXXXXXX
-              </p>
-              <p>
-                <span className="font-semibold">Email:</span> info@swamyenvelope.com
-              </p>
-              <p>
-                <span className="font-semibold">GSTIN:</span> 33AABCU9603R1Z0
-              </p>
-            </div>
-          </div>
-
-          {/* Right: Bill Info */}
-          <div className="text-right space-y-3">
-            <div className="text-center">
-              <p className="text-lg font-bold border border-gray-900 p-2 inline-block">
-                CASH BILL
-              </p>
-            </div>
-            <div className="border border-gray-800 p-3 space-y-2 text-sm">
-              <p className="flex justify-between">
-                <span className="font-semibold">Bill No.:</span>
-                <span>{billNumber}</span>
-              </p>
-              <p className="flex justify-between">
-                <span className="font-semibold">Date:</span>
-                <span>{billDate}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ====================================================================
-          CUSTOMER SECTION
-          ==================================================================== */}
-
-      <div className="border-l border-r border-b border-gray-800 px-6 py-4 mb-0">
-        <p className="font-bold text-gray-900 mb-2">To:</p>
-        <div className="space-y-1 text-sm">
-          <p className="font-semibold">{customerName}</p>
-          {customerPhone && (
-            <p>
-              <span className="font-semibold">Phone:</span> {customerPhone}
-            </p>
-          )}
-          <p>
-            <span className="font-semibold">Address:</span> Coimbatore
-          </p>
-        </div>
-      </div>
-
-      {/* ====================================================================
-          BILL ITEMS TABLE
-          ==================================================================== */}
-
-      <table className="w-full border-collapse mb-0">
-        <thead>
-          <tr>
-            <th className="border border-gray-800 p-2 text-left font-bold text-xs w-8">
-              S.No
-            </th>
-            <th className="border border-gray-800 p-2 text-left font-bold text-xs">
-              Description
-            </th>
-            <th className="border border-gray-800 p-2 text-center font-bold text-xs w-20">
-              Qty
-            </th>
-            <th className="border border-gray-800 p-2 text-right font-bold text-xs w-24">
-              Rate (Rs)
-            </th>
-            <th className="border border-gray-800 p-2 text-right font-bold text-xs w-28">
-              Amount (Rs)
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sale.items && sale.items.length > 0 ? (
-            sale.items.map((item, index) => {
-              const itemTotal = (item.quantity || 0) * (item.price || 0);
-              const description = formatItemDescription(item);
-
-              return (
-                <tr key={index}>
-                  <td className="border border-gray-800 p-2 text-xs text-center">
-                    {index + 1}
-                  </td>
-                  <td className="border border-gray-800 p-2 text-xs">
-                    {description}
-                  </td>
-                  <td className="border border-gray-800 p-2 text-xs text-center">
-                    {item.quantity}
-                  </td>
-                  <td className="border border-gray-800 p-2 text-xs text-right">
-                    ₹ {(item.price || 0).toFixed(2)}
-                  </td>
-                  <td className="border border-gray-800 p-2 text-xs text-right font-semibold">
-                    ₹ {itemTotal.toFixed(2)}
-                  </td>
-                </tr>
-              );
-            })
-          ) : (
-            <tr>
-              <td colSpan="5" className="border border-gray-800 p-2 text-center text-xs">
-                No items
-              </td>
-            </tr>
-          )}
-
-          {/* Empty rows for spacing */}
-          {sale.items && sale.items.length < 5 &&
-            Array.from({ length: 5 - sale.items.length }).map((_, i) => (
-              <tr key={`empty-${i}`}>
-                <td colSpan="5" className="border border-gray-800 p-2 h-6"></td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-
-      {/* ====================================================================
-          SUMMARY & TAX SECTION
-          ==================================================================== */}
-
-      <div className="border border-gray-800 border-t-0">
-        <div className="grid grid-cols-2 gap-0">
-          {/* Left: Amount in Words */}
-          <div className="border-r border-gray-800 p-4">
-            <p className="font-bold text-sm mb-2">Amount in Words:</p>
-            <p className="text-xs leading-relaxed font-semibold text-gray-900">
-              {amountInWords(taxBreakdown.grandTotal)}
-            </p>
-          </div>
-
-          {/* Right: Tax Calculation */}
-          <div className="p-4 space-y-1">
-            <div className="flex justify-between text-xs">
-              <span>Subtotal:</span>
-              <span>₹ {taxBreakdown.subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span>CGST (9%):</span>
-              <span>₹ {taxBreakdown.cgst.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span>SGST (9%):</span>
-              <span>₹ {taxBreakdown.sgst.toFixed(2)}</span>
-            </div>
-            {taxBreakdown.roundOff !== 0 && (
-              <div className="flex justify-between text-xs">
-                <span>Round Off:</span>
-                <span>₹ {taxBreakdown.roundOff.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-sm border-t border-gray-800 pt-2 mt-2">
-              <span>Grand Total:</span>
-              <span>₹ {taxBreakdown.grandTotal.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ====================================================================
-          FOOTER SECTION
-          ==================================================================== */}
-
-      <div className="border border-gray-800 border-t-0">
-        <div className="grid grid-cols-2 gap-4 p-4 border-b border-gray-800">
-          <div className="text-xs">
-            <p className="font-semibold mb-1">Received the goods in good condition</p>
-            <div className="h-12 border-t border-gray-800 mt-4"></div>
-            <p className="text-center text-xs mt-1">Receiver's Signature</p>
-          </div>
-
-          <div className="text-xs">
-            <p className="font-semibold mb-1">For SWAMY ENVELOPE</p>
-            <div className="h-12 border-t border-gray-800 mt-4"></div>
-            <p className="text-center text-xs mt-1">Authorized Signature</p>
-          </div>
-        </div>
-
-        {/* Bank Details */}
-        <div className="p-4">
-          <p className="font-bold text-xs mb-2">Bank Details:</p>
-          <div className="text-xs space-y-1">
-            <p>
-              <span className="font-semibold">Bank Name:</span> ICICI Bank Limited
-            </p>
-            <p>
-              <span className="font-semibold">Account No.:</span> 1234567890123456
-            </p>
-            <p>
-              <span className="font-semibold">IFSC Code:</span> ICIC0000001
-            </p>
-            <p className="text-center mt-3 text-xs italic text-gray-600">
-              "Thank you for your business. Please retain this bill for your records."
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/**
  * FORMAT ITEM DESCRIPTION
- * Converts item data to "Size | Material | GSM" format
+ * Converts item data to a readable description
  */
 function formatItemDescription(item) {
-  const parts = [];
+  // Use displayName if available (most descriptive)
+  if (item.displayName && item.displayName !== 'Product') {
+    return item.displayName;
+  }
 
-  if (item.size) parts.push(item.size);
+  const parts = [];
   if (item.productName) parts.push(item.productName);
   if (item.gsm) parts.push(`${item.gsm} GSM`);
+  if (item.size) parts.push(item.size);
   if (item.color && item.color !== 'null') parts.push(item.color);
 
-  return parts.join(' | ') || item.displayName || 'Product';
+  return parts.join(' | ') || 'Product';
 }
 
 export default Invoice;

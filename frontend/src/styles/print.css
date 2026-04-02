@@ -1,91 +1,107 @@
 /**
  * PRINT STYLES FOR INVOICES
  * Optimized for A4 printing and PDF export
+ * SWAMY ENVELOPE — Professional Invoice Layout
  */
 
+/* ============================================================
+   NORMAL VIEW — Hide print-only elements
+   ============================================================ */
+#print-invoice {
+  display: none;
+}
+
+.print-only {
+  display: none;
+}
+
+/* ============================================================
+   PRINT VIEW — Complete override for clean printing
+   ============================================================ */
 @media print {
-  /* Hide all non-print elements */
-  body {
+  /* Page setup */
+  @page {
+    size: A4;
     margin: 0;
-    padding: 0;
   }
 
-  /* Hide UI elements */
+  /* Hide everything first */
+  body > * {
+    display: none !important;
+  }
+
+  /* Show only the print invoice */
+  #print-invoice {
+    display: block !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 99999;
+    background: white;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Hide all UI elements */
   nav,
   button,
   .sidebar,
   .toolbar,
   .modal-overlay,
   .fixed,
-  [class*="print-only"] {
+  .sticky,
+  .no-print,
+  [class*="shadow"],
+  .Toastify {
     display: none !important;
-  }
-
-  /* Show only print content */
-  #print-invoice,
-  .invoice-page {
-    display: block !important;
-  }
-
-  /* Page setup */
-  @page {
-    size: A4;
-    margin: 0;
-    padding: 0;
   }
 
   /* Invoice page styling */
   .invoice-page {
-    width: 210mm;
-    height: 297mm;
-    margin: 0;
-    padding: 0;
+    display: block !important;
+    width: 210mm !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 10mm 12mm !important;
+    font-family: 'Segoe UI', 'Arial', sans-serif !important;
+    color: #000 !important;
+    background: #fff !important;
     page-break-after: always;
-    font-family: 'Courier New', monospace;
-    color: #000;
-    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Force background colors for table headers */
+  .invoice-page th,
+  .invoice-page [style*="background"] {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* Tables */
   table {
-    width: 100%;
-    border-collapse: collapse;
+    width: 100% !important;
+    border-collapse: collapse !important;
   }
 
-  th,
-  td {
-    border: 1px solid #000;
-  }
-
-  /* Remove box shadows and backgrounds for print */
-  .shadow,
-  .shadow-2xl,
-  .bg-opacity-50,
-  [class*="shadow"] {
+  /* Remove all shadows */
+  * {
     box-shadow: none !important;
+    text-shadow: none !important;
   }
 
-  /* Remove rounded corners for cleaner print */
+  /* Remove rounded corners */
   [class*="rounded"] {
     border-radius: 0 !important;
   }
 
-  /* Ensure all text is black */
-  * {
-    color: #000 !important;
-  }
-
-  /* Remove all background colors except necessary ones */
-  .bg-gray-100,
-  .bg-blue-50,
-  [class*="bg-"] {
-    background-color: transparent !important;
-  }
-
-  /* Prevent page breaks in unwanted places */
+  /* Prevent page breaks inside key elements */
   tr,
-  .border,
-  .space-y-1 {
+  .invoice-page > div {
     page-break-inside: avoid;
   }
 
@@ -94,49 +110,24 @@
     max-width: 100%;
     height: auto;
   }
-
-  /* Print-specific spacing */
-  .invoice-page {
-    font-size: 11pt;
-    line-height: 1.4;
-  }
 }
 
-/* Hide print content in normal view */
-#print-invoice {
-  display: none;
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+.print-break-before {
+  page-break-before: always;
 }
 
-/* Show print content during print */
-@media print {
-  #print-invoice {
-    display: block;
-  }
-
-  /* Hide modal and everything else */
-  body > * {
-    display: none;
-  }
-
-  #print-invoice {
-    display: block;
-  }
+.print-break-after {
+  page-break-after: always;
 }
 
-/* Utility classes for print styling */
-.print-only {
-  display: none;
+.print-no-break {
+  page-break-inside: avoid;
 }
 
 @media print {
-  .print-only {
-    display: block !important;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
   .print-break-before {
     page-break-before: always;
   }
@@ -147,5 +138,9 @@
 
   .print-no-break {
     page-break-inside: avoid;
+  }
+
+  .no-print {
+    display: none !important;
   }
 }

@@ -3,12 +3,63 @@ import { X, Printer, Download } from 'lucide-react';
 import { Card, CardContent } from './Card';
 
 export const ViewBillModal = ({ bill, onClose }) => {
-  const billDate = new Date(bill.date).toLocaleDateString('en-IN', {
+  // Handle date field (use createdAt if date is not available)
+  const dateField = bill.date || bill.createdAt || new Date();
+  
+  const billDate = new Date(dateField).toLocaleDateString('en-IN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   });
-  const billTime = new Date(bill.date).toLocaleTimeString('en-IN');
+  const billTime = new Date(dateField).toLocaleTimeString('en-IN');
+
+  // Parse items - handle both array and string formats
+  const getItems = () => {
+    if (!bill.items) return [];
+    
+    // If it's already an array
+    if (Array.isArray(bill.items)) {
+      // Check if items are strings that need parsing
+      return bill.items.map(item => {
+        if (typeof item === 'string') {
+          // Try to parse string representations
+          try {
+            // Handle @{...} PowerShell format
+            if (item.startsWith('@{') && item.endsWith('}')) {
+              const parsed = {};
+              const content = item.slice(2, -1);
+              const pairs = content.split(';').map(p => p.trim()).filter(p => p);
+              pairs.forEach(pair => {
+                const [key, value] = pair.split('=').map(p => p.trim());
+                parsed[key] = value === '' ? '' : value;
+              });
+              return parsed;
+            }
+            // Try JSON parsing
+            return JSON.parse(item);
+          } catch {
+            // If parsing fails, return the string as-is
+            return { displayName: item, productName: item };
+          }
+        }
+        return item;
+      });
+    }
+    
+    // If it's a string, try to parse it
+    if (typeof bill.items === 'string') {
+      try {
+        const parsed = JSON.parse(bill.items);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [];
+      }
+    }
+    
+    return [];
+  };
+
+  const items = getItems();
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
@@ -18,15 +69,15 @@ export const ViewBillModal = ({ bill, onClose }) => {
   };
 
   const generatePrintHTML = () => {
-    const itemsHTML = (bill.items || [])
+    const itemsHTML = items
       .map(
         (item, idx) => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${idx + 1}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.displayName || item.productName}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.price).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.itemTotal || item.price * item.quantity).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.displayName || item.productName || 'N/A'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity || 0}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.price || 0).toFixed(2)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.itemTotal || item.price * item.quantity || 0).toFixed(2)}</td>
       </tr>
     `
       )
@@ -95,7 +146,7 @@ export const ViewBillModal = ({ bill, onClose }) => {
         </table>
 
         <div class="total-section">
-          <div class="total-row">Total Items: ${bill.items?.length || 0}</div>
+          <div class="total-row">Total Items: ${items.length || 0}</div>
           <div class="grand-total">
             Grand Total: ₹${Number(bill.grandTotal || 0).toFixed(2)}
           </div>
@@ -172,25 +223,40 @@ export const ViewBillModal = ({ bill, onClose }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(bill.items || []).map((item, idx) => (
-                    <tr key={idx} className="border-b border-gray-200 dark:border-gray-700">
-                      <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
-                        {idx + 1}
-                      </td>
-                      <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
-                        {item.displayName || item.productName}
-                      </td>
-                      <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-center text-gray-900 dark:text-white">
-                        {item.quantity}
-                      </td>
-                      <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-right text-gray-900 dark:text-white">
-                        ₹{Number(item.price).toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-right font-semibold text-green-600 dark:text-green-400">
-                        ₹{Number(item.itemTotal || item.price * item.quantity).toFixed(2)}
+                  {items && items.length > 0 ? (
+                    items.map((item, idx) => {
+                      const itemName = item?.displayName || item?.productName || item?.name || 'Unknown Product';
+                      const itemQty = item?.quantity || 0;
+                      const itemPrice = item?.price || 0;
+                      const itemTotal = item?.itemTotal || (itemPrice * itemQty);
+                      
+                      return (
+                        <tr key={idx} className="border-b border-gray-200 dark:border-gray-700">
+                          <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
+                            {idx + 1}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
+                            {itemName}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-center text-gray-900 dark:text-white">
+                            {itemQty}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-right text-gray-900 dark:text-white">
+                            ₹{Number(itemPrice).toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-right font-semibold text-green-600 dark:text-green-400">
+                            ₹{Number(itemTotal).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan="5" className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-center text-gray-500 dark:text-gray-400">
+                        No detailed items available. Total: ₹{Number(bill.grandTotal || 0).toFixed(2)}
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -200,7 +266,7 @@ export const ViewBillModal = ({ bill, onClose }) => {
           <div className="border-t-2 border-gray-300 dark:border-gray-600 pt-4 mb-6">
             <div className="flex justify-between mb-2">
               <span className="text-gray-900 dark:text-white">Total Items:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{bill.items?.length || 0}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{items.length || 0}</span>
             </div>
             <div className="flex justify-between text-lg font-bold">
               <span className="text-gray-900 dark:text-white">Grand Total:</span>

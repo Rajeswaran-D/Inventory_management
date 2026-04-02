@@ -388,40 +388,31 @@ exports.updateVariant = async (req, res, next) => {
  * CRITICAL: Also deletes if ProductMaster has no more variants
  */
 exports.deleteVariant = async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const { id } = req.params;
     console.log(`🗑️  Deleting variant: ${id}`);
 
     // Find variant
-    const variant = await ProductVariant.findById(id).session(session);
+    const variant = await ProductVariant.findById(id);
     if (!variant) {
-      await session.abortTransaction();
       return res.status(404).json({ message: 'Variant not found' });
     }
 
     // Delete inventory entry
-    const inventory = await Inventory.findOneAndDelete(
-      { variantId: id },
-      { session }
-    );
+    const inventory = await Inventory.findOneAndDelete({ variantId: id });
     console.log(`  ✅ Inventory deleted: ${inventory?._id || 'N/A'}`);
 
     // Delete variant
-    await ProductVariant.findByIdAndDelete(id, { session });
+    await ProductVariant.findByIdAndDelete(id);
     console.log(`  ✅ Variant deleted: ${id}`);
 
     // Check if product master has any more active variants
     const remainingVariants = await ProductVariant.countDocuments({
       productId: variant.productId,
       isActive: true
-    }).session(session);
+    });
 
     console.log(`  📊 Remaining active variants for product: ${remainingVariants}`);
-
-    await session.commitTransaction();
 
     res.status(200).json({
       message: 'Variant and Inventory deleted successfully',
@@ -430,11 +421,8 @@ exports.deleteVariant = async (req, res, next) => {
       remainingVariants
     });
   } catch (err) {
-    await session.abortTransaction();
     console.error('❌ Error deleting variant:', err.message);
     next(err);
-  } finally {
-    session.endSession();
   }
 };
 
