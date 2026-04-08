@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback ,useRef} from 'react';
 import { Plus, Trash2, AlertCircle, RefreshCw, Edit2 } from 'lucide-react';
 import { productService } from '../services/api';
 import useToast from '../hooks/useToast';
@@ -14,7 +14,7 @@ import { DeleteProductVariantModal } from '../components/ui/DeleteProductVariant
  */
 export const ProductMaster = () => {
   const toast = useToast();
-  
+  const showProductsOnce = useRef(false);
   // State
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,7 @@ export const ProductMaster = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  
   
   // New modal states for Edit & Delete
   const [showEditModal, setShowEditModal] = useState(false);
@@ -37,6 +37,8 @@ export const ProductMaster = () => {
     size: '',
     color: null
   });
+
+
 
   // Fetch products - NO DEPENDENCIES to prevent infinite loops
   const fetchProducts = useCallback(async (showToast = false) => {
@@ -64,9 +66,9 @@ export const ProductMaster = () => {
 
       setProducts(productsWithVariants);
       // Only show toast on initial load OR if explicitly requested
-      if (showToast || !hasLoadedOnce) {
+      if (!showProductsOnce.current) {
         toast.info(`✅ Loaded ${productsWithVariants.length} product types`);
-        setHasLoadedOnce(true);
+        showProductsOnce.current = true;
       }
     } catch (err) {
       console.error('Error fetching products:', err);
@@ -76,7 +78,7 @@ export const ProductMaster = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast, hasLoadedOnce]);
+  }, [toast]);
 
   // Initial load - ONLY on mount
   useEffect(() => {
