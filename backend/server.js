@@ -16,9 +16,11 @@ const flexibleProductRoutes = require('./src/routes/flexibleProductRoutes');
 const inventoryRoutes = require('./src/routes/inventoryRoutes');
 const simpleInventoryRoutes = require('./src/routes/simpleInventoryRoutes');
 const pricingTierRoutes = require('./src/routes/pricingTierRoutes');
+const authRoutes = require('./src/routes/authRoutes');
 
-// Import auto-seeding utility
+// Import auto-seeding utilities
 const { autoSeed } = require('./src/autoSeed');
+const { autoSeedUsers } = require('./src/autoSeedUsers');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,10 +39,13 @@ mongoose.connect(MONGODB_URI)
   console.log('Connected to MongoDB');
   // Run auto-seeding on startup
   await autoSeed();
+  // Auto-seed users for authentication
+  await autoSeedUsers();
 })
 .catch(err => console.error('Could not connect to MongoDB:', err));
 
 // Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/envelopes', envelopeRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/sales', saleRoutesSimplified);  // Use simplified sales routes for billing

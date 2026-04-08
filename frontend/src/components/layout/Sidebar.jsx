@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Package, 
@@ -7,16 +7,21 @@ import {
   BarChart3,
   Settings,
   Menu,
-  X
+  X,
+  LogOut,
+  User
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { authService } from '../../services/authService';
+import toast from 'react-hot-toast';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: Package, label: 'Inventory', path: '/inventory' },
-  { icon: Receipt, label: 'Billing', path: '/billing' },
-  { icon: BarChart3, label: 'Reports', path: '/reports' },
-  { icon: Settings, label: 'Product Master', path: '/products' },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/', requiredRole: null }, // All can access
+  { icon: Package, label: 'Inventory', path: '/inventory', requiredRole: 'admin' }, // Admin only
+  { icon: Package, label: 'Inventory Details', path: '/inventory-details', requiredRole: 'employee' }, // Employee only
+  { icon: Receipt, label: 'Billing', path: '/billing', requiredRole: null }, // All can access
+  { icon: BarChart3, label: 'Reports', path: '/reports', requiredRole: 'admin' }, // Admin only
+  { icon: Settings, label: 'Product Master', path: '/products', requiredRole: 'admin' }, // Admin only
 ];
 
 // Hidden modules (preserved for functionality but not shown in UI)
@@ -26,7 +31,25 @@ const navItems = [
 // - Simple Inventory (/simple-inventory)
 // All routes, APIs, and logic remain intact and can be accessed directly via URL if needed
 
-export const Sidebar = ({ isOpen, toggle }) => {
+export const Sidebar = ({ isOpen, toggle, setIsAuthenticated }) => {
+  const navigate = useNavigate();
+  const userRole = authService.getUserRole();
+  const currentUser = authService.getCurrentUser();
+
+  const visibleNavItems = navItems.filter(item => {
+    // If no role requirement, everyone can see it
+    if (!item.requiredRole) return true;
+    // If role is required, only that role can see it
+    return userRole === item.requiredRole;
+  });
+
+  const handleLogout = () => {
+    authService.logout();
+    setIsAuthenticated(false);
+    toast.success('Logged out successfully');
+    navigate('/login');
+  };
+
   return (
     <>
       {/* Sidebar */}
@@ -57,9 +80,40 @@ export const Sidebar = ({ isOpen, toggle }) => {
           {isOpen && <span className="ml-3 font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Swamy</span>}
         </div>
 
+        {/* User Info */}
+        {isOpen && currentUser && (
+          <div 
+            className="px-4 py-3 border-b"
+            style={{
+              backgroundColor: 'var(--bg-main)',
+              borderColor: 'var(--border)'
+            }}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div 
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: 'var(--primary)' }}
+              >
+                {currentUser.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                  {currentUser.name}
+                </p>
+                <p className="text-xs capitalize px-2 py-0.5 rounded-full w-fit" style={{
+                  backgroundColor: userRole === 'admin' ? '#FEF3C7' : '#DBEAFE',
+                  color: userRole === 'admin' ? '#92400E' : '#1E40AF'
+                }}>
+                  {userRole}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -95,14 +149,33 @@ export const Sidebar = ({ isOpen, toggle }) => {
           ))}
         </nav>
 
-        {/* Toggle Button */}
+        {/* Logout & Footer */}
         <div 
-          className="p-3 border-t"
+          className="p-3 border-t space-y-2"
           style={{
             backgroundColor: 'var(--bg-main)',
             borderColor: 'var(--border)'
           }}
         >
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 font-medium"
+            style={{
+              color: '#EF4444',
+              backgroundColor: '#FEE2E2'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#FECACA';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#FEE2E2';
+            }}
+            title={!isOpen ? 'Logout' : ""}
+          >
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            {isOpen && <span className="text-sm">Logout</span>}
+          </button>
+
           <button
             onClick={toggle}
             className="w-full flex items-center justify-center p-2.5 rounded-lg transition-colors duration-200 font-medium hover:rounded-lg"
