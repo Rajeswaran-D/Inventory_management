@@ -8,6 +8,7 @@ import useToast from '../hooks/useToast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { AddProductVariantModal } from '../components/ui/AddProductVariantModal';
 import { SmartStockUpdateModal } from '../components/ui/SmartStockUpdateModal';
+import { productService } from '../services/api';
 
 const Inventory = () => {
   const toast = useToast();
@@ -139,18 +140,32 @@ const Inventory = () => {
   // Delete product
   const handleDeleteProduct = async () => {
     if (!selectedProduct) return;
-
+  
     try {
       setIsSubmitting(true);
+  
       await inventoryService.delete(selectedProduct._id);
-      toast.success('✅ Inventory item deleted');
+  
+      const variantId =
+        selectedProduct.variant?._id ||
+        selectedProduct.variantId?._id ||
+        selectedProduct.variantId;
+  
+      if (variantId) {
+        await productService.deleteVariant(variantId);
+      }
+  
+      toast.success('✅ Deleted permanently');
+  
       setShowDeleteConfirm(false);
       setSelectedProduct(null);
-      // Refresh with toast enabled to confirm deletion
+  
+      // Refresh UI
       await fetchInventory(true);
+  
     } catch (err) {
-      console.error('Error deleting product:', err);
-      toast.error(err?.response?.data?.message || 'Failed to delete inventory');
+      console.error('Error deleting:', err);
+      toast.error(err?.response?.data?.message || 'Failed to delete');
     } finally {
       setIsSubmitting(false);
     }
