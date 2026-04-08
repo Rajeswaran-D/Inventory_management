@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback ,useRef } from 'react';
 import { RefreshCw, Edit, Trash2, AlertCircle, Search, Plus, Minus } from 'lucide-react';
 import { inventoryService } from '../services/api';
 import { Card } from '../components/ui/Card';
@@ -26,6 +26,8 @@ const Inventory = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const showProductsOnce = useRef(false);
+  
 
   // Apply search filter
   const applySearch = (data, query) => {
@@ -68,9 +70,10 @@ const Inventory = () => {
       applySearch(productsData, searchQuery);
       
       // Only show toast on initial load OR if explicitly requested
-      if (productsData.length > 0 && (showToast || !hasLoadedOnce)) {
+      if(!showProductsOnce.current){
         toast.info(`✅ Loaded ${productsData.length} products`);
-        setHasLoadedOnce(true);
+        showProductsOnce.current = true;
+        setHasLoadedOnce(true); 
       }
     } catch (err) {
       console.error('❌ Error fetching inventory:', err);
@@ -80,7 +83,7 @@ const Inventory = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, toast, hasLoadedOnce]);
+  }, [searchQuery, toast]);
 
   // Handle search input - LOCAL FILTERING ONLY, NO API CALL
   const handleSearch = (e) => {
