@@ -151,11 +151,11 @@ export const isInDateRange = (saleDate, startDate, endDate) => {
  */
 export const getFilterOptions = () => {
   return [
-    { value: 'today', label: '📅 Today', icon: '📅' },
-    { value: 'week', label: '📊 This Week', icon: '📊' },
-    { value: 'month', label: '📈 This Month', icon: '📈' },
-    { value: 'year', label: '📉 This Year', icon: '📉' },
-    { value: 'all', label: '🌐 All Time', icon: '🌐' },
-    { value: 'custom', label: '🎯 Custom Range', icon: '🎯' }
+    { value: 'today', label: 'Today', icon: '📅' },
+    { value: 'week', label: 'This Week', icon: '📊' },
+    { value: 'month', label: 'This Month', icon: '📈' },
+    { value: 'year', label: 'This Year', icon: '📉' },
+    { value: 'all', label: 'All Time', icon: '🌐' },
+    { value: 'custom', label: 'Custom Range', icon: '🎯' }
   ];
 };
