@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Eye, Download, Filter, X, ArrowUpDown } from 'lucide-react';
+import { Search, Trash2, Eye, Download, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { saleService } from '../services/api';
 import { realTimeSyncService } from '../services/realTimeSync';
 import { Card, CardContent } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
-import { ViewBillModal } from '../components/ui/ViewBillModal';
+import { Invoice } from '../components/ui/Invoice';
 import { DeleteConfirmModal } from '../components/ui/DeleteConfirmModal';
 
 export const BillHistory = () => {
@@ -21,6 +21,7 @@ export const BillHistory = () => {
   const [sortBy, setSortBy] = useState('latest');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Fetch bills on component mount
   useEffect(() => {
@@ -42,16 +43,16 @@ export const BillHistory = () => {
   // Apply filters and search
   useEffect(() => {
     applyFiltersAndSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bills, searchQuery, filterType, sortBy, startDate, endDate]);
 
   // Fetch all bills
   const fetchBills = async () => {
     try {
       setIsLoading(true);
-      const res = await saleService.getAll({ limit: 200 });
+      const res = await saleService.getAll({ limit: 500 }); // Assuming higher limit for history
       const data = res.data?.data || res.data || [];
       
-      // Ensure we have arrays
       const billsArray = Array.isArray(data) ? data : [];
       setBills(billsArray);
     } catch (err) {
@@ -70,43 +71,43 @@ export const BillHistory = () => {
     // Filter by date range
     if (filterType !== 'all') {
       const today = new Date();
-      let startDate = new Date();
-      let endDate = new Date();
+      let filterStartDate = new Date();
+      let filterEndDate = new Date();
 
       switch (filterType) {
         case 'today':
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(23, 59, 59, 999);
+          filterStartDate.setHours(0, 0, 0, 0);
+          filterEndDate.setHours(23, 59, 59, 999);
           break;
         case 'week':
-          startDate.setDate(today.getDate() - 7);
-          startDate.setHours(0, 0, 0, 0);
+          filterStartDate.setDate(today.getDate() - 7);
+          filterStartDate.setHours(0, 0, 0, 0);
           break;
         case 'month':
-          startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-          endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+          filterStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          filterEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
           break;
         case 'year':
-          startDate = new Date(today.getFullYear(), 0, 1);
-          endDate = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
+          filterStartDate = new Date(today.getFullYear(), 0, 1);
+          filterEndDate = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
           break;
         case 'custom':
           if (!startDate || !endDate) {
             result = [];
             break;
           }
-          startDate = new Date(startDate);
-          startDate.setHours(0, 0, 0, 0);
-          endDate = new Date(endDate);
-          endDate.setHours(23, 59, 59, 999);
+          filterStartDate = new Date(startDate);
+          filterStartDate.setHours(0, 0, 0, 0);
+          filterEndDate = new Date(endDate);
+          filterEndDate.setHours(23, 59, 59, 999);
           break;
         default:
           break;
       }
 
       result = result.filter(bill => {
-        const billDate = new Date(bill.date);
-        return billDate >= startDate && billDate <= endDate;
+        const billDate = new Date(bill.date || bill.createdAt);
+        return billDate >= filterStartDate && billDate <= filterEndDate;
       });
     }
 
@@ -114,33 +115,32 @@ export const BillHistory = () => {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(bill =>
-        bill._id.toLowerCase().includes(query) ||
-        (bill.customerName && bill.customerName.toLowerCase().includes(query))
+        (bill._id && bill._id.toLowerCase().includes(query)) ||
+        (bill.customerName && bill.customerName.toLowerCase().includes(query)) ||
+        (bill.customerPhone && bill.customerPhone.includes(query))
       );
     }
 
-    // Sort
-    switch (sortBy) {
-      case 'latest':
-        result.sort((a, b) => new Date(b.date) - new Date(a.date));
-        break;
-      case 'oldest':
-        result.sort((a, b) => new Date(a.date) - new Date(b.date));
-        break;
-      case 'highest':
-        result.sort((a, b) => (b.grandTotal || 0) - (a.grandTotal || 0));
-        break;
-      case 'lowest':
-        result.sort((a, b) => (a.grandTotal || 0) - (b.grandTotal || 0));
-        break;
-      default:
-        break;
-    }
+    // Sort bills securely
+    result.sort((a, b) => {
+      const dateA = new Date(a.date || a.createdAt).getTime();
+      const dateB = new Date(b.date || b.createdAt).getTime();
+      const amountA = Number(a.grandTotal || 0);
+      const amountB = Number(b.grandTotal || 0);
+
+      switch (sortBy) {
+        case 'latest': return dateB - dateA;
+        case 'oldest': return dateA - dateB;
+        case 'highest': return amountB - amountA;
+        case 'lowest': return amountA - amountB;
+        default: return dateB - dateA; // Fallback to latest
+      }
+    });
 
     setFilteredBills(result);
   };
 
-  // View bill details
+  // View bill details / Download / Print (Triggers Invoice component)
   const handleViewBill = (bill) => {
     setSelectedBill(bill);
     setIsViewModalOpen(true);
@@ -167,122 +167,76 @@ export const BillHistory = () => {
     }
   };
 
-  // Download bill as PDF/print
-  const handleDownloadBill = async (bill) => {
+  // Bulk Download
+  const handleDownloadSelected = async () => {
     try {
-      // Generate invoice content
-      const invoiceContent = generateInvoiceHTML(bill);
+      setIsDownloading(true);
       
-      // Open in new window for printing
-      const newWindow = window.open('', '_blank');
-      newWindow.document.write(invoiceContent);
-      newWindow.document.close();
-      newWindow.print();
+      let params = {};
+      if (filterType !== 'all') {
+        const today = new Date();
+        let filterStartDate = new Date();
+        let filterEndDate = new Date();
+
+        switch (filterType) {
+          case 'today':
+            filterStartDate.setHours(0, 0, 0, 0);
+            filterEndDate.setHours(23, 59, 59, 999);
+            break;
+          case 'week':
+            filterStartDate.setDate(today.getDate() - 7);
+            filterStartDate.setHours(0, 0, 0, 0);
+            break;
+          case 'month':
+            filterStartDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            filterEndDate = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+            break;
+          case 'year':
+            filterStartDate = new Date(today.getFullYear(), 0, 1);
+            filterEndDate = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
+            break;
+          case 'custom':
+            if (!startDate || !endDate) {
+              toast.error('Please select both start and end dates');
+              setIsDownloading(false);
+              return;
+            }
+            filterStartDate = new Date(startDate);
+            filterStartDate.setHours(0, 0, 0, 0);
+            filterEndDate = new Date(endDate);
+            filterEndDate.setHours(23, 59, 59, 999);
+            break;
+          default:
+            break;
+        }
+        
+        params.startDate = filterStartDate.toISOString();
+        params.endDate = filterEndDate.toISOString();
+      }
+
+      toast.loading('Generating Excel file...', { id: 'download-toast' });
+      const res = await saleService.downloadSales(params);
       
-      toast.success('Bill ready for download/print');
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'bills.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Bills downloaded successfully', { id: 'download-toast' });
     } catch (err) {
-      console.error('Error generating bill:', err);
-      toast.error('Failed to generate bill');
+      console.error('Download error:', err);
+      if (err.response && err.response.status === 404) {
+        toast.error('No bills found in the selected range', { id: 'download-toast' });
+      } else {
+        toast.error('Failed to download bills', { id: 'download-toast' });
+      }
+    } finally {
+      setIsDownloading(false);
     }
-  };
-
-  // Generate invoice HTML
-  const generateInvoiceHTML = (bill) => {
-    const billDate = new Date(bill.date).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    const billTime = new Date(bill.date).toLocaleTimeString('en-IN');
-
-    const itemsHTML = (bill.items || [])
-      .map(
-        (item, idx) => `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${idx + 1}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.displayName || item.productName}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${item.quantity}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.price).toFixed(2)}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">₹${Number(item.itemTotal || item.price * item.quantity).toFixed(2)}</td>
-      </tr>
-    `
-      )
-      .join('');
-
-    return `
-    <html>
-      <head>
-        <title>Bill - ${bill._id}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; margin-bottom: 30px; }
-          .header h1 { margin: 0; color: #333; }
-          .header p { margin: 5px 0; color: #666; }
-          .bill-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-          .info-section { }
-          .info-label { font-weight: bold; color: #333; }
-          .info-value { color: #666; margin-top: 5px; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th { background-color: #f0f0f0; padding: 10px; text-align: left; font-weight: bold; }
-          .total-section { text-align: right; margin-top: 20px; padding-top: 20px; border-top: 2px solid #333; }
-          .total-row { font-size: 16px; font-weight: bold; margin: 10px 0; }
-          .footer { text-align: center; margin-top: 30px; color: #999; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>📄 INVOICE</h1>
-          <p>Bill ID: <strong>${bill._id}</strong></p>
-        </div>
-
-        <div class="bill-info">
-          <div class="info-section">
-            <div class="info-label">Customer Name:</div>
-            <div class="info-value">${bill.customerName || 'N/A'}</div>
-          </div>
-          <div class="info-section">
-            <div class="info-label">Phone:</div>
-            <div class="info-value">${bill.customerPhone || 'N/A'}</div>
-          </div>
-          <div class="info-section">
-            <div class="info-label">Date:</div>
-            <div class="info-value">${billDate}</div>
-          </div>
-          <div class="info-section">
-            <div class="info-label">Time:</div>
-            <div class="info-value">${billTime}</div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 5%;">No.</th>
-              <th style="width: 50%;">Product</th>
-              <th style="width: 15%; text-align: center;">Qty</th>
-              <th style="width: 15%; text-align: right;">Price</th>
-              <th style="width: 15%; text-align: right;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHTML}
-          </tbody>
-        </table>
-
-        <div class="total-section">
-          <div class="total-row">Total Items: ${bill.items?.length || 0}</div>
-          <div class="total-row" style="font-size: 20px; color: #27ae60;">
-            Grand Total: ₹${Number(bill.grandTotal || 0).toFixed(2)}
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>Thank you for your purchase!</p>
-          <p>Generated on ${new Date().toLocaleString('en-IN')}</p>
-        </div>
-      </body>
-    </html>
-    `;
   };
 
   // Calculate totals for display
@@ -294,15 +248,29 @@ export const BillHistory = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-3xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
             📋 Bill History
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>View, search, and manage all billing records</p>
+          <p className="text-sm mt-1 text-gray-600 dark:text-gray-400">
+            View, search, print, and download generated invoices
+          </p>
         </div>
+        <button
+          onClick={handleDownloadSelected}
+          disabled={isDownloading || filteredBills.length === 0}
+          className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+        >
+          {isDownloading ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            <Download className="w-5 h-5" />
+          )}
+          Download Selected Bills
+        </button>
       </div>
 
       {/* Search and Filter Bar */}
-      <Card className="bg-white dark:bg-gray-800">
+      <Card className="bg-white dark:bg-gray-800 shadow-sm border-gray-200">
         <CardContent>
           <div className="space-y-4">
             {/* Search Bar */}
@@ -310,7 +278,7 @@ export const BillHistory = () => {
               <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
               <Input
                 type="text"
-                placeholder="Search by Bill ID or Customer Name..."
+                placeholder="Search by Bill ID, Customer Name or Phone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -379,109 +347,116 @@ export const BillHistory = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10">
-          <CardContent>
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
+          <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Total Bills</p>
-              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{filteredBills.length}</p>
+              <p className="text-blue-800 font-semibold mb-1">Total Generated Bills</p>
+              <p className="text-3xl font-black text-blue-900">{filteredBills.length}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-900/10">
-          <CardContent>
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200">
+          <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Total Revenue</p>
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">₹{totalAmount.toFixed(2)}</p>
+              <p className="text-green-800 font-semibold mb-1">Total Sales Revenue</p>
+              <p className="text-3xl font-black text-green-900">₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-900/10">
-          <CardContent>
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200">
+          <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-gray-600 dark:text-gray-400 text-sm">Total Items</p>
-              <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{totalItems}</p>
+              <p className="text-purple-800 font-semibold mb-1">Total Units Sold</p>
+              <p className="text-3xl font-black text-purple-900">{totalItems}</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Bills Table */}
-      <Card className="bg-white dark:bg-gray-800">
-        <CardContent>
+      <Card className="bg-white dark:bg-gray-800 shadow-sm border-gray-200 overflow-hidden">
+        <CardContent className="p-0">
           {isLoading ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 dark:text-gray-400">Loading bills...</p>
+            <div className="text-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-500 font-medium">Loading historical records...</p>
             </div>
           ) : filteredBills.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 dark:text-gray-400">No bills found</p>
+            <div className="text-center py-16">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p className="text-gray-500 text-lg font-medium">No bills available matching filters.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-100 dark:bg-gray-700">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Bill ID</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Date & Time</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Customer</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 dark:text-white">Items</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-white">Amount</th>
-                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 dark:text-white">Actions</th>
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Bill No / ID</th>
+                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Customer</th>
+                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase text-center">Items</th>
+                    <th className="px-6 py-4 text-sm font-bold text-gray-700 uppercase">Date & Time</th>
+                    <th className="px-6 py-4 text-right text-sm font-bold text-gray-700 uppercase">Total Amount</th>
+                    <th className="px-6 py-4 text-center text-sm font-bold text-gray-700 uppercase">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {filteredBills.map((bill, idx) => (
-                    <tr
-                      key={bill._id}
-                      className={`border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 ${
-                        idx === 0 ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white">
-                        {bill._id.substring(0, 8)}...
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                        {new Date(bill.date).toLocaleDateString('en-IN')} <br />
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(bill.date).toLocaleTimeString('en-IN')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                        {bill.customerName || 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-center text-gray-900 dark:text-white">
-                        {bill.items?.length || 0}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right font-semibold text-green-600 dark:text-green-400">
-                        ₹{Number(bill.grandTotal || 0).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex justify-center gap-2">
-                          <button
-                            onClick={() => handleViewBill(bill)}
-                            className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition"
-                            title="View"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDownloadBill(bill)}
-                            className="p-2 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg transition"
-                            title="Download/Print"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(bill)}
-                            className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-gray-100">
+                  {filteredBills.map((bill, idx) => {
+                    const billDateObj = new Date(bill.date || bill.createdAt);
+                    const billIdDisplay = bill.billNumber || bill._id.substring(0, 8).toUpperCase();
+                    return (
+                      <tr
+                        key={bill._id}
+                        className="hover:bg-gray-50 transition-colors bg-white"
+                      >
+                        <td className="px-6 py-4">
+                           <span className="font-mono font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded">
+                             #{billIdDisplay}
+                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-bold text-gray-900">{bill.customerName || 'Walk-in'}</p>
+                          {bill.customerPhone && <p className="text-xs text-gray-500 mt-1">{bill.customerPhone}</p>}
+                        </td>
+                        <td className="px-6 py-4 text-center font-medium text-gray-700">
+                          {bill.items?.length || 0}
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium text-gray-900">{billDateObj.toLocaleDateString('en-IN')}</p>
+                          <p className="text-xs text-gray-500">{billDateObj.toLocaleTimeString('en-IN')}</p>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-bold text-lg text-green-700">
+                            ₹{Number(bill.grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center gap-2">
+                            <button
+                              onClick={() => handleViewBill(bill)}
+                              className="px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 rounded-md transition-colors flex items-center gap-1.5 font-medium text-sm"
+                              title="Inspect & Print"
+                            >
+                              <Eye className="w-4 h-4" /> View
+                            </button>
+                            <button
+                              onClick={() => handleViewBill(bill)}
+                              className="px-3 py-2 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 rounded-md transition-colors flex items-center gap-1.5 font-medium text-sm"
+                              title="Download PDF"
+                            >
+                              <Download className="w-4 h-4" /> DL
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClick(bill)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                              title="Delete bill"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -489,21 +464,22 @@ export const BillHistory = () => {
         </CardContent>
       </Card>
 
-      {/* Modals */}
+      {/* View Bill Invoice Format */}
       {isViewModalOpen && selectedBill && (
-        <ViewBillModal
-          bill={selectedBill}
+        <Invoice 
+          sale={selectedBill} 
           onClose={() => {
             setIsViewModalOpen(false);
             setSelectedBill(null);
-          }}
+          }} 
         />
       )}
 
+      {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && billToDelete && (
         <DeleteConfirmModal
-          title="Delete Bill"
-          message={`Are you sure you want to delete bill ${billToDelete._id.substring(0, 8)}... from ${billToDelete.customerName || 'N/A'}?`}
+          title="Delete Bill Record"
+          message={`Are you sure you want to completely erase the bill #${billToDelete.billNumber || billToDelete._id.substring(0, 8)}? This action cannot be reversed.`}
           onConfirm={handleConfirmDelete}
           onCancel={() => {
             setIsDeleteModalOpen(false);
@@ -514,3 +490,5 @@ export const BillHistory = () => {
     </div>
   );
 };
+
+export default BillHistory;

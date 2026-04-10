@@ -17,6 +17,7 @@ const inventoryRoutes = require('./src/routes/inventoryRoutes');
 const simpleInventoryRoutes = require('./src/routes/simpleInventoryRoutes');
 const pricingTierRoutes = require('./src/routes/pricingTierRoutes');
 const authRoutes = require('./src/routes/authRoutes');
+const reportRoutes = require('./src/routes/reportRoutes');
 
 // Import auto-seeding utilities
 const { autoSeed } = require('./src/autoSeed');
@@ -55,6 +56,7 @@ app.use('/api/flexible-products', flexibleProductRoutes);  // New flexible produ
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/simple-inventory', simpleInventoryRoutes);  // Simple inventory management
 app.use('/api/pricing-tiers', pricingTierRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Basic health check route
 app.get('/api/health', (req, res) => {

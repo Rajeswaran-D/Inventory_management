@@ -57,6 +57,12 @@ router.get('/summary', saleController.getSalesSummary);
  */
 router.get('/pdf/:saleId', saleController.generatePDF);
 
+/**
+ * GET /api/sales/download - Download in-depth sales items report
+ * Query: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ */
+router.get('/download', saleController.downloadSales);
+
 // ============================================================================
 // GENERIC ROUTES (AFTER SPECIFIC ROUTES)
 // ============================================================================

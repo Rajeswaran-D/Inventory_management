@@ -15,158 +15,108 @@ export const Login = ({ setIsAuthenticated }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    if (!email || !password) { setError('Please fill in all fields'); return; }
     setLoading(true);
-
     try {
-      if (!email || !password) {
-        setError('Please fill in all fields');
-        setLoading(false);
-        return;
-      }
-
       const response = await authService.login(email, password);
-      
       if (response.success) {
         toast.success(`Welcome, ${response.user.name}!`);
         setIsAuthenticated(true);
         navigate('/');
       } else {
         setError(response.message || 'Login failed');
-        toast.error(response.message || 'Login failed');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message || 'Login failed';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const msg = err.response?.data?.message || err.message || 'Login failed';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDemoLogin = async (role) => {
-    const demoCredentials = {
-      admin: { email: 'admin@swamy.com', password: 'admin@123' },
-      employee: { email: 'employee@swamy.com', password: 'employee@123' }
-    };
-
-    const credentials = demoCredentials[role];
-    setEmail(credentials.email);
-    setPassword(credentials.password);
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          {/* Header */}
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8 transform transition-all duration-300 hover:shadow-emerald-100">
+          {/* Logo / Header */}
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-200 ring-4 ring-emerald-50">
               <Lock className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Smart Inventory</h1>
-            <p className="text-gray-600">Secure Access Portal</p>
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Smart Inventory</h1>
+            <p className="text-sm text-gray-400 mt-2 font-medium uppercase tracking-widest">Authentication Portal</p>
           </div>
 
-          {/* Error Message */}
+          {/* Error */}
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="mb-6 px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-600 flex items-center gap-3 animate-head-shake">
+              <span className="text-lg">✕</span>
+              {error}
             </div>
           )}
 
-          {/* Login Form */}
-          <form onSubmit={handleLogin} className="space-y-5">
-            {/* Email Input */}
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider ml-1">Email Address</label>
+              <div className="relative group">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="admin@company.com"
+                  autoComplete="email"
                   disabled={loading}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium"
                 />
               </div>
             </div>
 
-            {/* Password Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider ml-1">Password</label>
+              <div className="relative group">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  autoComplete="current-password"
                   disabled={loading}
+                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                  disabled={loading}
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-600 p-1"
+                  tabIndex={-1}
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-2.5 rounded-lg transition duration-200 transform hover:scale-105 disabled:hover:scale-100"
+              className="w-full relative overflow-hidden bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-bold py-3.5 rounded-xl transition-all duration-300 transform active:scale-[0.98] shadow-lg shadow-emerald-200/50"
             >
               {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Signing in...
-                </div>
-              ) : (
-                'Sign In'
-              )}
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  Verifying Credentials...
+                </span>
+              ) : 'Sign Into Account'}
             </button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-8 pt-8 border-t border-gray-200">
-            <p className="text-sm text-gray-600 text-center mb-4 font-medium">Demo Accounts</p>
-            <div className="space-y-3">
-              <button
-                onClick={() => handleDemoLogin('admin')}
-                className="w-full bg-amber-50 hover:bg-amber-100 text-amber-900 font-medium py-2 rounded-lg transition border border-amber-200"
-              >
-                Admin Demo
-              </button>
-              <button
-                onClick={() => handleDemoLogin('employee')}
-                className="w-full bg-green-50 hover:bg-green-100 text-green-900 font-medium py-2 rounded-lg transition border border-green-200"
-              >
-                Employee Demo
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 text-center mt-3">
-              Click a demo button to auto-fill credentials, then click Sign In
-            </p>
-          </div>
-
           {/* Footer */}
-          <div className="mt-8 text-center text-xs text-gray-500">
-            <p>Smart Inventory & Billing System v1.0</p>
+          <div className="mt-10 pt-6 border-t border-gray-50 text-center">
+            <p className="text-xs font-bold text-gray-300 uppercase tracking-[0.2em]">
+              Secure Company Access
+            </p>
           </div>
         </div>
       </div>

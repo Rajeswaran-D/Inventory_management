@@ -1,33 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Download, Calendar, FileText, Sheet } from 'lucide-react';
+import { BarChart3, Calendar, FileSpreadsheet, FileText, TrendingUp, ShoppingCart, Package, IndianRupee } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { saleService } from '../services/api';
-import { realTimeSyncService } from '../services/realTimeSync';
-import { Card, CardContent } from '../components/ui/Card';
-import { getDateRange, getFilterOptions, formatDate, calculateStatistics } from '../utils/dateFiltering';
-import { exportToExcel, exportToCSV, getFilteredSales, getSalesStatistics } from '../services/exportService';
+import { reportService } from '../services/api';
+import { getDateRange, getFilterOptions, formatDate } from '../utils/dateFiltering';
+import {
+  LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
+
+const FILTER_LABELS = {
+  today: 'Today',
+  week: 'Last 7 Days',
+  month: 'This Month',
+  year: 'This Year',
+  all: 'All Time',
+  custom: 'Custom Range',
+};
 
 export const Reports = () => {
-  const [filterType, setFilterType] = useState('today');
-  const [customStartDate, setCustomStartDate] = useState(formatDate(new Date()));
+  const [filterType, setFilterType] = useState('month');
+  const [customStartDate, setCustomStartDate] = useState(
+    formatDate(new Date(new Date().setDate(new Date().getDate() - 30)))
+  );
   const [customEndDate, setCustomEndDate] = useState(formatDate(new Date()));
-  const [showCustomRange, setShowCustomRange] = useState(false);
-  const [salesData, setSalesData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [summary, setSummary] = useState({
-    totalSales: 0,
-    totalOrders: 0,
-    totalItemsSold: 0,
-    averageOrderValue: 0
+  const [activeTab, setActiveTab] = useState('analytics');
+
+  const [reportData, setReportData] = useState({
+    revenueByDate: [],
+    salesCount: [],
+    topProducts: [],
+    lowStockCount: 0,
+    lowStockAnalytics: [],
+    productStats: [],
+    summary: { totalSales: 0, totalRevenue: 0, totalItems: 0, averageOrderValue: 0 },
   });
 
-  // Fetch and filter sales data
-  const generateReport = async () => {
+  const fetchReport = async () => {
     setLoading(true);
     try {
       let startDate = null, endDate = null;
-
       if (filterType === 'custom') {
         startDate = new Date(customStartDate);
         endDate = new Date(customEndDate);
@@ -38,358 +50,346 @@ export const Reports = () => {
         endDate = range.endDate;
       }
 
-      // Get filtered sales
-      const sales = await getFilteredSales(
-        filterType === 'custom' ? 'custom' : filterType,
-        startDate,
-        endDate
-      );
+      const params = {};
+      if (startDate && endDate) {
+        params.startDate = startDate.toISOString();
+        params.endDate = endDate.toISOString();
+      }
 
-      setSalesData(sales);
-
-      // Calculate statistics
-      const stats = calculateStatistics(sales);
-      setSummary(stats);
-
-      console.log('📊 Report generated:', stats);
+      const res = await reportService.getAnalytics(params);
+      if (res.data?.success) setReportData(res.data.data);
     } catch (err) {
-      console.error('❌ Report error:', err);
-      toast.error('Failed to generate report');
+      console.error(err);
+      toast.error('Failed to load report data');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Excel export
-  const handleExportExcel = async () => {
-    setExporting(true);
+  useEffect(() => { fetchReport(); }, [filterType, customStartDate, customEndDate]);
+
+  const getParams = () => {
+    let startDate = null, endDate = null;
+    if (filterType === 'custom') {
+      startDate = new Date(customStartDate);
+      endDate = new Date(customEndDate);
+    } else {
+      const range = getDateRange(filterType);
+      startDate = range.startDate;
+      endDate = range.endDate;
+    }
+    const params = {};
+    if (startDate && endDate) {
+      params.startDate = startDate.toISOString();
+      params.endDate = endDate.toISOString();
+    }
+    return params;
+  };
+
+  const handleDownloadExcel = async () => {
     try {
-      if (salesData.length === 0) {
-        toast.error('No data to export');
-        return;
-      }
-
-      let startDate = null, endDate = null;
-
-      if (filterType === 'custom') {
-        startDate = new Date(customStartDate);
-        endDate = new Date(customEndDate);
-      } else {
-        const range = getDateRange(filterType);
-        startDate = range.startDate;
-        endDate = range.endDate;
-      }
-
-      await exportToExcel(
-        filterType === 'custom' ? 'custom' : filterType,
-        startDate,
-        endDate
-      );
-
-      toast.success('✅ Excel file downloaded successfully!');
-    } catch (err) {
-      console.error('❌ Export error:', err);
-      toast.error(err.message || 'Failed to export to Excel');
-    } finally {
-      setExporting(false);
-    }
+      const response = await reportService.downloadReport(getParams());
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `sales_report_${filterType}_${formatDate(new Date())}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Excel downloaded successfully');
+    } catch { toast.error('Excel download failed'); }
   };
 
-  // Handle CSV export
-  const handleExportCSV = async () => {
-    setExporting(true);
-    try {
-      if (salesData.length === 0) {
-        toast.error('No data to export');
-        return;
-      }
-
-      let startDate = null, endDate = null;
-
-      if (filterType === 'custom') {
-        startDate = new Date(customStartDate);
-        endDate = new Date(customEndDate);
-      } else {
-        const range = getDateRange(filterType);
-        startDate = range.startDate;
-        endDate = range.endDate;
-      }
-
-      await exportToCSV(
-        filterType === 'custom' ? 'custom' : filterType,
-        startDate,
-        endDate
-      );
-
-      toast.success('✅ CSV file downloaded successfully!');
-    } catch (err) {
-      console.error('❌ Export error:', err);
-      toast.error(err.message || 'Failed to export to CSV');
-    } finally {
-      setExporting(false);
-    }
+  const handleDownloadCSV = () => {
+    if (!reportData.productStats?.length) { toast.error('No data to export'); return; }
+    const headers = ['Product Name', 'Units Sold', 'Total Revenue (₹)'];
+    const rows = reportData.productStats.map(s => [`"${s.name}"`, s.quantity, s.revenue]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `sales_report_${filterType}_${formatDate(new Date())}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    toast.success('CSV downloaded successfully');
   };
 
-  // Set quick filter
-  const handleQuickFilter = (value) => {
-    setFilterType(value);
-    if (value !== 'custom') {
-      setShowCustomRange(false);
-    }
-  };
+  const periodLabel = FILTER_LABELS[filterType] || 'Selected Period';
+  const summary = reportData.summary;
+  const totalRevenue = summary.totalRevenue || 0;
 
-  // Handle custom range
-  const handleCustomRange = () => {
-    if (filterType !== 'custom') {
-      setFilterType('custom');
-      setShowCustomRange(true);
-    }
-  };
-
-  // Subscribe to real-time updates
-  useEffect(() => {
-    generateReport();
-
-    const unsubscribe = realTimeSyncService.subscribe('reports', (data) => {
-      if (data?.type === 'new_sale' || data?.type === 'refresh') {
-        console.log('🔄 Reports real-time refresh triggered');
-        generateReport();
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Generate report when filters change
-  useEffect(() => {
-    generateReport();
-  }, [filterType, customStartDate, customEndDate]);
-
-  const { startDate: displayStartDate, endDate: displayEndDate, label: filterLabel } = 
-    filterType === 'custom' 
-      ? { startDate: customStartDate, endDate: customEndDate, label: `${customStartDate} to ${customEndDate}` }
-      : getDateRange(filterType);
+  const SUMMARY_CARDS = [
+    { label: 'Total Revenue', value: `₹${totalRevenue.toLocaleString()}`, icon: IndianRupee, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Total Sales', value: summary.totalSales, icon: ShoppingCart, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Items Sold', value: `${summary.totalItems} units`, icon: Package, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'Avg Order Value', value: `₹${Math.round(summary.averageOrderValue).toLocaleString()}`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-12 px-4 md:px-6">
+
+      {/* ── Page Header ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <BarChart3 className="w-8 h-8" style={{ color: 'var(--primary)' }} />
-            Sales Reports & Data Export
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <BarChart3 className="w-7 h-7 text-indigo-600" />
+            Reports & Analytics
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Advanced filtering, analytics, and data export tools
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">Period: {periodLabel}</p>
         </div>
       </div>
 
-      {/* Quick Filters */}
-      <Card className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
-        <CardContent>
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            Quick Filters
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {getFilterOptions().map(option => (
-              <button
-                key={option.value}
-                onClick={() => handleQuickFilter(option.value)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all active:scale-95 flex items-center gap-2 ${
-                  filterType === option.value
-                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                    : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                }`}
-              >
-                <span>{option.icon}</span>
-                {option.label}
+      {/* ── Period Filter Bar ── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-semibold text-gray-700">Filter Period</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {getFilterOptions().map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setFilterType(opt.value)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                filterType === opt.value
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {opt.icon} {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {filterType === 'custom' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Start Date</label>
+              <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">End Date</label>
+              <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 outline-none" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Summary Cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {SUMMARY_CARDS.map(card => (
+          <div key={card.label} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-start gap-3">
+            <div className={`${card.bg} ${card.color} p-2.5 rounded-xl`}>
+              <card.icon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">{card.label}</p>
+              <p className="text-xl font-bold text-gray-900">{loading ? '—' : card.value}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{periodLabel}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Loading ── */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-3">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
+          <p className="text-gray-400 text-sm">Loading report data...</p>
+        </div>
+      ) : (
+        <>
+          {/* ── Tab Navigation ── */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            {[['analytics', 'Analytics Overview'], ['report', 'Sales Report']].map(([val, label]) => (
+              <button key={val} onClick={() => setActiveTab(val)}
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeTab === val
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}>{label}
               </button>
             ))}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Custom Date Range */}
-      {filterType === 'custom' && (
-        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border border-cyan-200 dark:border-blue-800">
-          <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Custom Date Range</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Start Date
-                </label>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
+          {/* ════════════════════ ANALYTICS TAB ════════════════════ */}
+          {activeTab === 'analytics' && (
+            <div className="space-y-6">
+              <h2 className="text-base font-bold text-gray-700 flex items-center gap-2">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full inline-block" />
+                Analytics Overview
+              </h2>
+
+              {/* Revenue Trend – full width */}
+              <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+                <p className="text-sm font-bold text-gray-700 mb-5">Revenue Trend</p>
+                {reportData.revenueByDate.length === 0 ? (
+                  <EmptyState message="No revenue data for selected period" />
+                ) : (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={reportData.revenueByDate}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 11 }} tickFormatter={v => `₹${v}`} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}
+                          formatter={v => [`₹${v.toLocaleString()}`, 'Revenue']}
+                        />
+                        <Line type="monotone" dataKey="revenue" stroke="#6366F1" strokeWidth={3}
+                          dot={{ r: 4, fill: '#6366F1', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  End Date
-                </label>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
+              {/* 2-col: Sales Count + Top Products */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+                  <p className="text-sm font-bold text-gray-700 mb-5">Sales Count per Day</p>
+                  {reportData.salesCount.length === 0 ? (
+                    <EmptyState message="No sales data for selected period" />
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={reportData.salesCount}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                          <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 11 }} allowDecimals={false} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}
+                            formatter={v => [v, 'Sales']}
+                          />
+                          <Bar dataKey="count" fill="#10B981" radius={[5, 5, 0, 0]} barSize={22} name="Sales" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+                  <p className="text-sm font-bold text-gray-700 mb-5">Top Products by Units Sold</p>
+                  {reportData.topProducts.length === 0 ? (
+                    <EmptyState message="No product data for selected period" />
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={reportData.topProducts.slice(0, 7)} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F3F4F6" />
+                          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+                          <YAxis type="category" dataKey="name" axisLine={false} tickLine={false}
+                            tick={{ fill: '#6B7280', fontSize: 11 }} width={100} />
+                          <Tooltip
+                            contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.08)' }}
+                            formatter={v => [v, 'Units Sold']}
+                          />
+                          <Bar dataKey="quantity" fill="#F59E0B" radius={[0, 5, 5, 0]} barSize={18} name="Units Sold" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              <div className="flex items-end">
-                <button
-                  onClick={() => handleQuickFilter('today')}
-                  className="w-full px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-lg font-medium transition-all"
-                >
-                  Close Custom Range
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Export Options */}
-      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-emerald-800">
-        <CardContent>
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            Export Data
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleExportExcel}
-              disabled={exporting || salesData.length === 0}
-              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium active:scale-95"
-              title="Download as Excel (.xlsx)"
-            >
-              <Sheet className="w-4 h-4" />
-              Export to Excel
-            </button>
-
-            <button
-              onClick={handleExportCSV}
-              disabled={exporting || salesData.length === 0}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium active:scale-95"
-              title="Download as CSV"
-            >
-              <FileText className="w-4 h-4" />
-              Export to CSV
-            </button>
-
-            {salesData.length > 0 && (
-              <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center ml-auto">
-                📊 {salesData.length} record{salesData.length !== 1 ? 's' : ''} ready to export
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-800 dark:to-gray-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Orders</p>
-            <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{summary.totalOrders}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">Transactions</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Items Sold</p>
-            <p className="text-3xl font-bold text-green-700 dark:text-green-400">{summary.totalItemsSold}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">Units</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Revenue</p>
-            <p className="text-3xl font-bold text-purple-700 dark:text-purple-400">₹{summary.totalSales.toLocaleString()}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">Income</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 hover:shadow-lg transition-shadow">
-          <CardContent>
-            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Average Order Value</p>
-            <p className="text-3xl font-bold text-orange-700 dark:text-orange-400">₹{summary.averageOrderValue.toFixed(0)}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">Per sale</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter Info */}
-      <Card className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-        <CardContent>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            <strong>Current Filter:</strong> {filterLabel} • 
-            <strong className="ml-2">Showing:</strong> {salesData.length} record{salesData.length !== 1 ? 's' : ''}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Sales Details Table */}
-      <Card className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
-        <CardContent>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Transaction Details</h3>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-          ) : salesData.length === 0 ? (
-            <div className="text-center py-8 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <p className="text-gray-600 dark:text-gray-400">No transactions found for the selected period</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
-                    <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">Bill ID</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">Date & Time</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">Customer</th>
-                    <th className="px-4 py-3 text-center font-semibold text-gray-900 dark:text-white">Items</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {salesData.map((sale, idx) => (
-                    <tr key={sale._id} className="hover:bg-indigo-50 dark:hover:bg-gray-800 transition-colors">
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-mono text-xs">
-                        {sale._id.toString().slice(-8).toUpperCase()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-sm">
-                        {new Date(sale.date).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 font-medium">
-                        {sale.customerName || 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300">
-                        <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                          {sale.items?.length || 0}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">
-                        ₹{(sale.grandTotal || 0).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+
+          {/* ════════════════════ SALES REPORT TAB ════════════════════ */}
+          {activeTab === 'report' && (
+            <div className="space-y-4">
+              {/* Header row */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h2 className="text-base font-bold text-gray-700 flex items-center gap-2">
+                  <span className="w-1 h-5 bg-emerald-500 rounded-full inline-block" />
+                  Sales Report &mdash; {periodLabel}
+                </h2>
+                <div className="flex gap-2 items-center">
+                  <button onClick={handleDownloadCSV}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
+                    <FileText className="w-4 h-4 text-orange-500" /> Download CSV
+                  </button>
+                  <button onClick={handleDownloadExcel}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition shadow-md">
+                    <FileSpreadsheet className="w-4 h-4" /> Export to Excel
+                  </button>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                {reportData.productStats.length === 0 ? (
+                  <div className="py-16 text-center text-gray-400 text-sm">
+                    No sales data for selected period.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wider">
+                        <tr>
+                          <th className="px-6 py-4 font-semibold">Product Name</th>
+                          <th className="px-6 py-4 font-semibold text-center">Units Sold</th>
+                          <th className="px-6 py-4 font-semibold text-right">Total Revenue (₹)</th>
+                          <th className="px-6 py-4 font-semibold text-right">Sales Contribution (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {reportData.productStats.map((stat, i) => {
+                          const pct = totalRevenue > 0
+                            ? ((stat.revenue / totalRevenue) * 100).toFixed(1)
+                            : 0;
+                          return (
+                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4 font-semibold text-gray-900">{stat.name}</td>
+                              <td className="px-6 py-4 text-center">
+                                <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">
+                                  {stat.quantity.toLocaleString()} units
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right font-bold text-gray-800">
+                                ₹{stat.revenue.toLocaleString()}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="text-xs font-semibold text-gray-600">{pct}%</span>
+                                  <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="border-t-2 border-indigo-100 bg-indigo-50">
+                        <tr>
+                          <td className="px-6 py-4 font-bold text-indigo-700">Total Summary</td>
+                          <td className="px-6 py-4 text-center font-bold text-gray-900">
+                            {summary.totalItems.toLocaleString()} units
+                          </td>
+                          <td className="px-6 py-4 text-right font-black text-indigo-700 text-base">
+                            ₹{totalRevenue.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-right text-xs font-bold text-indigo-500">100%</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
+
+const EmptyState = ({ message }) => (
+  <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+    {message}
+  </div>
+);

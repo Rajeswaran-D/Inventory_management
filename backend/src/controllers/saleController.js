@@ -1,6 +1,6 @@
 const Sale = require('../models/Sale');
 const Inventory = require('../models/Inventory');
-// const StockTransaction = require('../models/StockTransaction'); // Dropping legacy dependency
+const ExcelJS = require('exceljs');
 
 // Record a new sale (POS Style)
 exports.createSale = async (req, res, next) => {
@@ -292,5 +292,93 @@ exports.getReports = async (req, res, next) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// DOWNLOAD bulk sales report
+exports.downloadSales = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    let query = {};
+    if (startDate && endDate) {
+      query.date = { 
+        $gte: new Date(startDate), 
+        $lte: new Date(endDate) 
+      };
+    }
+    
+    const sales = await Sale.find(query).sort({ date: -1 });
+    
+    if (sales.length === 0) {
+      return res.status(404).json({ message: 'No bills found in the selected range' });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Bills');
+
+    // Make the header bold
+    worksheet.columns = [
+      { header: 'Bill No', key: 'billNo', width: 25 },
+      { header: 'Date', key: 'date', width: 22 },
+      { header: 'Customer Name', key: 'customerName', width: 25 },
+      { header: 'Phone', key: 'phone', width: 15 },
+      { header: 'GSTIN', key: 'gstin', width: 20 },
+      { header: 'Product Details', key: 'productDetails', width: 45 },
+      { header: 'Quantity', key: 'quantity', width: 10 },
+      { header: 'Rate', key: 'rate', width: 12 },
+      { header: 'Amount', key: 'amount', width: 15 },
+      { header: 'Grand Total', key: 'grandTotal', width: 15 }
+    ];
+    
+    worksheet.getRow(1).font = { bold: true };
+
+    sales.forEach(sale => {
+      const billNo = sale.billNumber || sale._id.toString();
+      const date = new Date(sale.date || sale.createdAt).toLocaleDateString('en-IN') + ' ' + new Date(sale.date || sale.createdAt).toLocaleTimeString('en-IN');
+      const customerName = sale.customerName || 'Walk-in';
+      const grandTotal = sale.grandTotal;
+
+      if (sale.items && sale.items.length > 0) {
+        sale.items.forEach((item, index) => {
+          worksheet.addRow({
+            billNo: index === 0 ? billNo : '',
+            date: index === 0 ? date : '',
+            customerName: index === 0 ? customerName : '',
+            phone: index === 0 ? (sale.customerPhone || '') : '',
+            gstin: index === 0 ? (sale.customerGSTIN || '') : '',
+            productDetails: item.displayName || item.productName || 'Product',
+            quantity: item.quantity,
+            rate: item.price,
+            amount: item.itemTotal || (item.quantity * item.price),
+            grandTotal: index === 0 ? grandTotal : ''
+          });
+        });
+      } else {
+        worksheet.addRow({
+          billNo: billNo,
+          date: date,
+          customerName: customerName,
+          grandTotal: grandTotal
+        });
+      }
+      
+      // Separator row
+      worksheet.addRow({});
+    });
+
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=bills.xlsx'
+    );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Error generating Excel file:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate Excel file' });
   }
 };

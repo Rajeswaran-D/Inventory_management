@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, AlertCircle, Search } from 'lucide-react';
+import { RefreshCw, AlertCircle, Search, Package, AlertTriangle, Layers } from 'lucide-react';
 import { inventoryService } from '../services/api';
 import useToast from '../hooks/useToast';
 
@@ -72,20 +72,38 @@ const EmployeeInventory = () => {
   }, []);
 
   const getStockStatus = (quantity, minimum) => {
-    if (quantity < minimum) return { color: 'text-red-600', label: 'Low', bg: 'bg-red-50' };
-    if (quantity < minimum * 2) return { color: 'text-amber-600', label: 'Medium', bg: 'bg-amber-50' };
-    return { color: 'text-green-600', label: 'Good', bg: 'bg-green-50' };
+    if (quantity === 0) return { color: 'text-red-700', label: 'Out of Stock', bg: 'bg-red-100', border: 'border-red-500' };
+    if (quantity < minimum) return { color: 'text-red-600', label: 'Low Stock', bg: 'bg-red-50', border: 'border-red-400' };
+    if (quantity < minimum * 2) return { color: 'text-amber-600', label: 'Medium', bg: 'bg-amber-50', border: 'border-amber-400' };
+    return { color: 'text-green-600', label: 'In Stock', bg: 'bg-green-50', border: 'border-green-400' };
   };
 
   const displayProducts = filteredProducts.length > 0 || searchQuery === '' ? filteredProducts : [];
 
+  // Group Products by Material Type
+  const groupedProducts = displayProducts.reduce((acc, product) => {
+    const variant = product.variant || product.variantId || {};
+    const productMaster = variant.productId || {};
+    const type = productMaster.name || 'Other';
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(product);
+    return acc;
+  }, {});
+
+  // Quick Summary Calculations
+  const totalProducts = products.length;
+  const totalUnits = products.reduce((sum, p) => sum + (p.quantity || 0), 0);
+  const lowStockCount = products.filter(p => (p.quantity || 0) < (p.minimumStockLevel || 50)).length;
+
   return (
-    <div className="space-y-6 p-6 bg-white">
+    <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">📦 Inventory Details</h1>
-        <p className="text-sm text-gray-600 mt-1">View inventory stock levels and product details</p>
+        <h1 className="text-3xl font-bold text-gray-900">📦 Inventory Dashboard</h1>
+        <p className="text-sm text-gray-600 mt-1">Real-time view of stock levels and product details</p>
       </div>
 
+      {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -96,98 +114,161 @@ const EmployeeInventory = () => {
         </div>
       )}
 
-      <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by size, material, GSM, color..."
-            value={searchQuery}
-            onChange={handleSearch}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-          />
+      {/* Quick Summary Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
+            <Package className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Products</p>
+            <p className="text-2xl font-bold text-gray-900">{totalProducts}</p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => fetchInventory(true)}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="p-3 bg-green-100 text-green-600 rounded-lg">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total Units in Stock</p>
+            <p className="text-2xl font-bold text-gray-900">{totalUnits.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+          <div className="p-3 bg-red-100 text-red-600 rounded-lg">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Low Stock Alerts</p>
+            <p className="text-2xl font-bold text-gray-900">{lowStockCount}</p>
+          </div>
         </div>
       </div>
 
+      {/* Search and Action Bar */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by name, size, GSM, or color..."
+            value={searchQuery}
+            onChange={handleSearch}
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+          />
+        </div>
+
+        <button
+          onClick={() => fetchInventory(true)}
+          disabled={loading}
+          className="w-full md:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </button>
+      </div>
+
+      {/* Loading State */}
       {loading && products.length === 0 && (
-        <div className="bg-white rounded-lg p-12 text-center">
+        <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-200">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading inventory details...</p>
+          <p className="text-gray-600 font-medium">Loading inventory details...</p>
         </div>
       )}
 
+      {/* Empty Search State */}
       {!loading && displayProducts.length === 0 && !error && (
-        <div className="bg-white rounded-lg p-12 text-center">
+        <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-200">
           <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-600">
-            {searchQuery ? 'No products match your search' : 'No products in inventory'}
+          <p className="text-gray-600 font-medium">
+            {searchQuery ? 'No products match your search.' : 'No products in inventory.'}
           </p>
         </div>
       )}
 
+      {/* Main Card Grid Display */}
       {!loading && displayProducts.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900">
-              Showing {displayProducts.length} of {products.length} items
-            </h3>
-            <span className="text-xs text-gray-500">
-              {searchQuery && `Filtered by: "${searchQuery}"`}
-            </span>
-          </div>
+        <div className="space-y-8">
+          {Object.entries(groupedProducts).map(([materialType, items]) => (
+            <div key={materialType}>
+              {/* Group Header */}
+              <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-xl font-bold text-gray-800">{materialType}</h2>
+                <span className="bg-gray-200 text-gray-700 text-xs font-bold px-2.5 py-0.5 border border-gray-300 rounded-full">
+                  {items.length} variants
+                </span>
+              </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Product Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Material</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Size</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">GSM</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Color</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Quantity</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Price (₹)</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-700">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {displayProducts.map((product) => {
+              {/* Grid Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {items.map((product) => {
                   const variant = product.variant || product.variantId || {};
-                  const productMaster = variant.productId || {};
                   const minimum = product.minimumStockLevel || 50;
-                  const status = getStockStatus(product.quantity || 0, minimum);
+                  const qty = product.quantity || 0;
+                  const status = getStockStatus(qty, minimum);
 
                   return (
-                     <tr key={product._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4"><span className="font-medium text-gray-900">{variant?.displayName || 'N/A'}</span></td>
-                      <td className="py-3 px-4 text-gray-600">{productMaster?.name || 'N/A'}</td>
-                      <td className="py-3 px-4 text-gray-600">{variant?.size || '-'}</td>
-                      <td className="py-3 px-4 text-center text-gray-600">{variant?.gsm || '-'}</td>
-                      <td className="py-3 px-4 text-center text-gray-600">{variant?.color || '-'}</td>
-                      <td className="py-3 px-4 text-right font-semibold text-gray-900">{product.quantity || 0}</td>
-                      <td className="py-3 px-4 text-right font-semibold text-gray-900">₹{(product.price || 0).toFixed(2)}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${status.color} ${status.bg}`}>
-                          {status.label} ({product.quantity || 0}/{minimum})
+                    <div 
+                      key={product._id} 
+                      className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 transform hover:-translate-y-1 border-l-4 ${status.border} p-5 flex flex-col justify-between h-full`}
+                    >
+                      {/* Card Header */}
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="font-bold text-gray-900 text-lg sm:text-xl truncate pr-2">
+                            {variant.displayName || 'Unnamed Variant'}
+                          </h3>
+                        </div>
+                        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold shrink-0 ${status.bg} ${status.color}`}>
+                          {status.label}
                         </span>
-                      </td>
-                    </tr>
+                      </div>
+
+                      {/* Card Details */}
+                      <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        {variant.size && (
+                          <div className="flex flex-col">
+                            <span className="text-xs uppercase font-semibold text-gray-400">Size</span>
+                            <span className="font-medium text-gray-800">{variant.size}</span>
+                          </div>
+                        )}
+                        {variant.gsm && (
+                          <div className="flex flex-col">
+                            <span className="text-xs uppercase font-semibold text-gray-400">GSM</span>
+                            <span className="font-medium text-gray-800">{variant.gsm} GSM</span>
+                          </div>
+                        )}
+                        {variant.color && (
+                          <div className="flex flex-col">
+                            <span className="text-xs uppercase font-semibold text-gray-400">Color</span>
+                            <span className="font-medium text-gray-800">{variant.color}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Footer (Quantity and Price) */}
+                      <div className="flex items-end justify-between mt-auto pt-4 border-t border-gray-100">
+                        <div>
+                          <p className="text-xs uppercase font-semibold text-gray-400 mb-1">Stock Level</p>
+                          <p className={`text-2xl font-black ${qty > 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            {qty.toLocaleString()} <span className="text-sm font-medium text-gray-500">units</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs uppercase font-semibold text-gray-400 mb-1">Unit Price</p>
+                          <p className="text-lg font-bold text-blue-600">
+                            ₹{(product.price || 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

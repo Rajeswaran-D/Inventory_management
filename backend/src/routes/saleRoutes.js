@@ -6,6 +6,7 @@ router.post('/', controller.createSale);
 router.get('/reports', controller.getReports);
 router.get('/top-selling', controller.getTopSelling);
 router.get('/dashboard-stats', controller.getDashboardStats);
+router.get('/download', controller.downloadSales);
 router.get('/', controller.getAllSales);
 
 module.exports = router;

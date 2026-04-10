@@ -13,6 +13,7 @@ import { Billing } from './pages/BillingSimplified';
 import { BillHistory } from './pages/BillHistory';
 import { Reports } from './pages/Reports';
 import ProductManagement from './pages/ProductManagement';
+import UserManagement from './pages/UserManagement';
 import { authService } from './services/authService';
 
 function App() {
@@ -110,7 +111,7 @@ function App() {
                   </PrivateRoute>
                 } />
                 <Route path="/bill-history" element={
-                  <PrivateRoute>
+                  <PrivateRoute requiredRole="admin">
                     <BillHistory />
                   </PrivateRoute>
                 } />
@@ -127,6 +128,11 @@ function App() {
                 <Route path="/product-management" element={
                   <PrivateRoute requiredRole="admin">
                     <ProductManagement />
+                  </PrivateRoute>
+                } />
+                <Route path="/users" element={
+                  <PrivateRoute requiredRole="admin">
+                    <UserManagement />
                   </PrivateRoute>
                 } />
                 <Route path="*" element={<Navigate to="/" replace />} />

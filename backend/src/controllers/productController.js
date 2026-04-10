@@ -44,12 +44,25 @@ exports.getProductById = async (req, res, next) => {
     }
 
     // Get all variants for this product
-    const variants = await ProductVariant.find({ productId: id, isActive: true });
+    const variants = await ProductVariant.find({ productId: id, isActive: true }).lean();
     console.log(`  ✅ Found ${variants.length} variants`);
+
+    const variantIds = variants.map(v => v._id);
+    const inventories = await Inventory.find({ variantId: { $in: variantIds } }).lean();
+
+    const mergedVariants = variants.map(variant => {
+      const inv = inventories.find(i => i.variantId.toString() === variant._id.toString());
+      return {
+        ...variant,
+        price: inv ? inv.price : 0,
+        quantity: inv ? inv.quantity : 0,
+        inventoryId: inv ? inv._id : null
+      };
+    });
 
     res.status(200).json({
       ...product.toObject(),
-      variants
+      variants: mergedVariants
     });
   } catch (err) {
     console.error('❌ Error fetching product:', err.message);
@@ -184,10 +197,24 @@ exports.getAllVariants = async (req, res, next) => {
 
     const variants = await ProductVariant.find(query)
       .populate('productId')
-      .sort({ displayName: 1 });
+      .sort({ displayName: 1 })
+      .lean();
 
-    console.log(`✅ Found ${variants.length} variants`);
-    res.status(200).json(variants);
+    const variantIds = variants.map(v => v._id);
+    const inventories = await Inventory.find({ variantId: { $in: variantIds } }).lean();
+
+    const mergedVariants = variants.map(variant => {
+      const inv = inventories.find(i => i.variantId.toString() === variant._id.toString());
+      return {
+        ...variant,
+        price: inv ? inv.price : 0,
+        quantity: inv ? inv.quantity : 0,
+        inventoryId: inv ? inv._id : null
+      };
+    });
+
+    console.log(`✅ Found ${mergedVariants.length} variants`);
+    res.status(200).json(mergedVariants);
   } catch (err) {
     console.error('❌ Error fetching variants:', err.message);
     next(err);
@@ -224,7 +251,7 @@ exports.getVariantById = async (req, res, next) => {
  */
 exports.createVariant = async (req, res, next) => {
   try {
-    const { productId, productName, gsm, size, color, isManualProduct } = req.body;
+    const { productId, productName, gsm, size, color, isManualProduct, price } = req.body;
     
     console.log(`📝 Creating variant: ${productName || productId}`);
 
@@ -296,7 +323,7 @@ exports.createVariant = async (req, res, next) => {
       variantId: variant._id,
       productName: product.name,
       quantity: 0,
-      price: 0,
+      price: price !== undefined ? parseFloat(price) : 0,
       minimumStockLevel: 50
     });
 

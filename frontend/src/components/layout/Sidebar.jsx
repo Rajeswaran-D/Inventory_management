@@ -9,24 +9,26 @@ import {
   Menu,
   X,
   LogOut,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { authService } from '../../services/authService';
 import toast from 'react-hot-toast';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/', requiredRole: null }, // All can access
-  { icon: Package, label: 'Inventory', path: '/inventory', requiredRole: 'admin' }, // Admin only
-  { icon: Package, label: 'Inventory Details', path: '/inventory-details', requiredRole: 'employee' }, // Employee only
-  { icon: Receipt, label: 'Billing', path: '/billing', requiredRole: null }, // All can access
-  { icon: BarChart3, label: 'Reports', path: '/reports', requiredRole: 'admin' }, // Admin only
-  { icon: Settings, label: 'Product Master', path: '/products', requiredRole: 'admin' }, // Admin only
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/', requiredRole: null },
+  { icon: Package, label: 'Inventory', path: '/inventory', requiredRole: 'admin' },
+  { icon: Package, label: 'Inventory Details', path: '/inventory-details', requiredRole: 'employee' },
+  { icon: Receipt, label: 'Billing', path: '/billing', requiredRole: null },
+  { icon: Receipt, label: 'Bill History', path: '/bill-history', requiredRole: 'admin' },
+  { icon: BarChart3, label: 'Reports', path: '/reports', requiredRole: 'admin' },
+  { icon: Settings, label: 'Product Master', path: '/products', requiredRole: 'admin' },
+  { icon: Users, label: 'User Management', path: '/users', requiredRole: 'admin' },
 ];
 
 // Hidden modules (preserved for functionality but not shown in UI)
 // - Billing (Variants) (/billing-variants)
-// - Bill History (/bill-history)
 // - Product Management (/product-management)
 // - Simple Inventory (/simple-inventory)
 // All routes, APIs, and logic remain intact and can be accessed directly via URL if needed

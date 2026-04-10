@@ -41,6 +41,7 @@ export const saleService = {
   exportCSV: (filter = 'all', startDate = null, endDate = null) => 
     api.get('/sales/export/csv', { params: { filter, startDate, endDate }, responseType: 'blob' }),
   generatePDF: (saleId) => api.get(`/sales/pdf/${saleId}`),
+  downloadSales: (params) => api.get('/sales/download', { params, responseType: 'blob' }),
 };
 
 export const customerService = {
@@ -108,6 +109,11 @@ export const pricingTierService = {
   
   // Bulk operations
   createBulk: (data) => api.post('/pricing-tiers/bulk/create', data)
+};
+
+export const reportService = {
+  getAnalytics: (params) => api.get('/reports', { params }),
+  downloadReport: (params) => api.get('/reports/download', { params, responseType: 'blob' })
 };
 
 export default api;

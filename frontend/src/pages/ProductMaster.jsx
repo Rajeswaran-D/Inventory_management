@@ -31,6 +31,18 @@ export const ProductMaster = () => {
   const [selectedVariantForEdit, setSelectedVariantForEdit] = useState(null);
   const [selectedVariantForDelete, setSelectedVariantForDelete] = useState(null);
 
+  // Expandable sections state
+  const [expandedProducts, setExpandedProducts] = useState(new Set());
+
+  const toggleExpand = (productId) => {
+    setExpandedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+
   // Form state
   const [variantForm, setVariantForm] = useState({
     gsm: '',
@@ -191,137 +203,119 @@ export const ProductMaster = () => {
         </div>
       )}
 
-      {/* Products Grid */}
+      {/* Products List (Expandable) */}
       {!loading && products.length > 0 && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => (
-            <div key={product._id} className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
-              {/* Product Header */}
-              <div className="bg-gradient-to-r from-green-500 to-green-600 px-4 py-3">
-                <h3 className="text-lg font-bold text-white">{product.name}</h3>
-              </div>
-
-              {/* Product Details */}
-              <div className="p-4 space-y-3">
-                {/* Configuration */}
-                <div className="text-sm">
-                  <p className="text-gray-700">
-                    <strong>Configuration:</strong>
-                  </p>
-                  <div className="mt-2 space-y-1 text-xs text-gray-600">
-                    {product.hasGSM && <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded">📊 GSM Required</span>}
-                    {product.hasSize && <span className="inline-block px-2 py-1 bg-green-100 text-green-700 rounded ml-2">📐 Size Required</span>}
-                    {product.hasColor && <span className="inline-block px-2 py-1 bg-purple-100 text-purple-700 rounded mt-1">🎨 Color Required</span>}
+        <div className="space-y-4">
+          {products.map((product) => {
+            const isExpanded = expandedProducts.has(product._id);
+            return (
+              <div key={product._id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                {/* Product Header (Clickable) */}
+                <div 
+                  className="bg-gray-50 hover:bg-gray-100 p-4 cursor-pointer flex justify-between items-center transition-colors"
+                  onClick={() => toggleExpand(product._id)}
+                >
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-lg font-bold text-gray-900">{product.name}</h3>
+                    <div className="flex gap-2 text-xs">
+                      {product.hasGSM && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">GSM</span>}
+                      {product.hasSize && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Size</span>}
+                      {product.hasColor && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">Color</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500 font-medium text-sm">
+                      {product.variants?.length || 0} Variants
+                    </span>
+                    <button 
+                      className={`transform transition-transform text-gray-400 ${isExpanded ? 'rotate-180' : ''}`}
+                    >
+                      ▼
+                    </button>
                   </div>
                 </div>
 
-                {/* Options */}
-                <div className="text-sm">
-                  <p className="text-gray-700 font-medium mb-2">Available Options:</p>
-                  {product.gsmOptions?.length > 0 && (
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1"><strong>GSM:</strong></p>
-                      <div className="flex flex-wrap gap-1">
-                        {product.gsmOptions.map(gsm => (
-                          <span key={gsm} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                            {gsm}
-                          </span>
-                        ))}
-                      </div>
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="p-4 border-t border-gray-200">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700">Product Variants</h4>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProduct(product);
+                          setShowAddVariant(true);
+                          setVariantForm({ gsm: '', size: '', color: null });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Variant
+                      </button>
                     </div>
-                  )}
 
-                  {product.sizeOptions?.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-600 mb-1"><strong>Sizes:</strong></p>
-                      <div className="flex flex-wrap gap-1">
-                        {product.sizeOptions.map(size => (
-                          <span key={size} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                            {size}
-                          </span>
-                        ))}
+                    {product.variants && product.variants.length > 0 ? (
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Specifications</th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {product.variants.map(variant => (
+                              <tr key={variant._id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-medium text-gray-900">{variant.displayName}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900 font-semibold">₹{variant.price || 0}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedVariantForEdit(variant);
+                                        setSelectedProduct(product);
+                                        setShowEditModal(true);
+                                      }}
+                                      className="text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors"
+                                      title="Edit Variant"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedVariantForDelete(variant);
+                                        setSelectedProduct(product);
+                                        setShowDeleteModal(true);
+                                      }}
+                                      className="text-red-600 hover:bg-red-50 p-2 rounded transition-colors"
+                                      title="Delete Variant"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </div>
-                  )}
-
-                  {product.colorOptions?.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-600 mb-1"><strong>Colors:</strong></p>
-                      <div className="flex flex-wrap gap-1">
-                        {product.colorOptions.map(color => (
-                          <span key={color} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                            {color}
-                          </span>
-                        ))}
+                    ) : (
+                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                        <p className="text-sm text-gray-500">No variants exist for this product yet.</p>
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Variants Count */}
-                <div className="pt-2 border-t border-gray-200">
-                  <p className="text-sm text-gray-600">
-                    <strong>Variants:</strong> {product.variants?.length || 0}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-2">
-                  <button
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setShowAddVariant(true);
-                      setVariantForm({ gsm: '', size: '', color: null });
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Variant
-                  </button>
-                </div>
-              </div>
-
-              {/* Variants List */}
-              {product.variants && product.variants.length > 0 && (
-                <div className="border-t border-gray-200 p-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">Variants ({product.variants.length}):</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {product.variants.map(variant => (
-                      <div key={variant._id} className="text-xs flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded transition-colors">
-                        <span className="text-gray-700 truncate flex-1 font-medium">{variant.displayName}</span>
-                        <div className="flex gap-1 ml-2">
-                          {/* Edit Button */}
-                          <button
-                            onClick={() => {
-                              setSelectedVariantForEdit(variant);
-                              setSelectedProduct(product);
-                              setShowEditModal(true);
-                            }}
-                            className="p-1.5 hover:bg-blue-100 rounded transition-colors text-blue-600"
-                            title="Edit variant"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          {/* Delete Button */}
-                          <button
-                            onClick={() => {
-                              setSelectedVariantForDelete(variant);
-                              setSelectedProduct(product);
-                              setShowDeleteModal(true);
-                            }}
-                            className="p-1.5 hover:bg-red-100 rounded transition-colors text-red-600"
-                            title="Delete variant"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -340,6 +334,7 @@ export const ProductMaster = () => {
           setShowAddVariant(false);
           setSelectedProduct(null);
         }}
+        product={selectedProduct}
         onProductAdded={() => fetchProducts(true)}
       />
 
