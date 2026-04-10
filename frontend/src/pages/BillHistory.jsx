@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Eye, Download, AlertCircle } from 'lucide-react';
+import { Search, Trash2, Eye, Download, AlertCircle, FileText } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { saleService } from '../services/api';
 import { realTimeSyncService } from '../services/realTimeSync';
@@ -244,28 +244,27 @@ export const BillHistory = () => {
   const totalItems = filteredBills.reduce((sum, bill) => sum + (bill.items?.length || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
-            📋 Bill History
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent flex items-center gap-3">
+            <FileText className="w-8 h-8 text-green-600" />
+            Bill History
           </h1>
-          <p className="text-sm mt-1 text-gray-600 dark:text-gray-400">
-            View, search, print, and download generated invoices
-          </p>
+          <p className="text-gray-600 mt-2 font-medium">View, search, print, and download generated invoices</p>
         </div>
         <button
           onClick={handleDownloadSelected}
           disabled={isDownloading || filteredBills.length === 0}
-          className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg active:scale-95"
         >
           {isDownloading ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
           ) : (
             <Download className="w-5 h-5" />
           )}
-          Download Selected Bills
+          Download Bills
         </button>
       </div>
 

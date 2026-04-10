@@ -33,14 +33,14 @@ export const StockHistory = () => {
   }, [filters]);
 
   return (
-    <div className="space-y-6 animate-in">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-center gap-3">
-           <History className="w-8 h-8 text-indigo-600" />
-           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Stock Timeline</h1>
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen animate-in">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-2">
+           <History className="w-8 h-8 text-green-600" />
+           <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">Stock Timeline</h1>
         </div>
-        <p className="text-gray-600 dark:text-gray-400">Track every movement of your inventory over time.</p>
-      </header>
+        <p className="text-gray-600 font-medium">Track every movement of your inventory over time.</p>
+      </div>
 
       <div className="flex flex-wrap gap-4 p-6 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm">
          <div className="flex-1 min-w-[200px]">

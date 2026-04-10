@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Package, AlertTriangle, ShoppingCart, ArrowUp, ArrowDown, Calendar, BarChart3 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { saleService, envelopeService } from '../services/api';
+import { saleService, envelopeService, inventoryService } from '../services/api';
 import { Card, CardTitle, CardContent } from '../components/ui/Card';
 import { DailySummary } from '../components/ui/DailySummary';
 import { LowStockModal } from '../components/ui/LowStockModal';
@@ -59,37 +59,39 @@ export const Dashboard = () => {
     try {
       console.log('📊 Fetching comprehensive dashboard data...');
       
-      const reportsRes = await saleService.getReports();
-      console.log('✅ Reports received:', reportsRes.data);
+      // Fetch CURRENT inventory data from inventory collection
+      const inventoryRes = await inventoryService.getAll({});
+      const inventoryData = Array.isArray(inventoryRes.data) ? inventoryRes.data : inventoryRes.data?.data || [];
+      console.log('✅ Current inventory fetched:', inventoryData.length, 'items');
       
+      // Calculate current inventory statistics from ACTUAL inventory data
+      const totalProducts = inventoryData.length;
+      const totalStock = inventoryData.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const totalStockValue = inventoryData.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
+      const lowStockCount = inventoryData.filter(item => (item.quantity || 0) < (item.minimumStockLevel || 50)).length;
+      
+      // Fetch sales reports for revenue data
+      const reportsRes = await saleService.getReports();
       const data = reportsRes.data?.data || {};
       
       setStats({
-        // Today
+        // Sales metrics from reports
         todaySales: data.today?.salesCount || 0,
         todayRevenue: data.today?.revenue || 0,
-        
-        // Previous (yesterday)
         previousSales: data.previous?.salesCount || 0,
         previousRevenue: data.previous?.revenue || 0,
-        
-        // Weekly
         weeklySales: data.weekly?.salesCount || 0,
         weeklyRevenue: data.weekly?.revenue || 0,
-        
-        // Monthly
         monthlySales: data.monthly?.salesCount || 0,
         monthlyRevenue: data.monthly?.revenue || 0,
-        
-        // Yearly
         yearlySales: data.yearly?.salesCount || 0,
         yearlyRevenue: data.yearly?.revenue || 0,
         
-        // Inventory
-        totalProducts: data.inventory?.totalProducts || 0,
-        totalStock: data.inventory?.totalStock || 0,
-        totalStockValue: data.inventory?.totalStockValue || 0,
-        lowStockCount: data.inventory?.lowStockCount || 0
+        // Current inventory data from actual inventory collection
+        totalProducts,
+        totalStock,
+        totalStockValue,
+        lowStockCount
       });
       
       console.log('📈 Dashboard stats updated');
@@ -107,11 +109,8 @@ export const Dashboard = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div 
-            className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4"
-            style={{ borderColor: 'var(--primary)' }}
-          />
-          <p style={{ color: 'var(--text-secondary)' }}>Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-green-200 border-t-green-600 mx-auto mb-4" />
+          <p className="text-lg font-medium text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -129,107 +128,117 @@ export const Dashboard = () => {
   const refreshTime = lastRefresh.toLocaleTimeString();
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Real-time business analytics and insights</p>
-          <p className="text-xs text-gray-500 mt-2">Last updated: {refreshTime}</p>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">📊 Dashboard</h1>
+          <p className="text-gray-600 mt-2 font-medium">Real-time business analytics and insights</p>
+          <p className="text-xs font-medium text-gray-400 mt-2">⏰ Last updated: {refreshTime}</p>
         </div>
         <button
           onClick={fetchDashboardData}
-          className="px-4 py-2 text-white rounded-lg active:scale-95 transition-all font-medium bg-blue-600 hover:bg-blue-700"
+          className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg active:scale-95 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl flex items-center gap-2"
         >
-          🔄 Refresh
+          <span>🔄</span> Refresh
         </button>
       </div>
 
       {/* Primary Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Today's Sales */}
-        <Card>
+        <Card variant="elevated">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Today's Sales</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">{stats.todaySales}</p>
+              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Today's Sales</p>
+              <p className="text-3xl font-bold text-gray-900 mt-3">{stats.todaySales}</p>
               {salesTrend !== 0 && (
-                <div className="flex items-center gap-1 mt-2">
+                <div className="flex items-center gap-1 mt-3">
                   {salesTrend > 0 ? (
                     <>
                       <ArrowUp className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-600 font-medium">{salesTrend}%</span>
+                      <span className="text-sm text-green-600 font-bold">{salesTrend}%</span>
                     </>
                   ) : (
                     <>
                       <ArrowDown className="w-4 h-4 text-red-600" />
-                      <span className="text-sm text-red-600 font-medium">{Math.abs(salesTrend)}%</span>
+                      <span className="text-sm text-red-600 font-bold">{Math.abs(salesTrend)}%</span>
                     </>
                   )}
                   <span className="text-xs text-gray-500">vs yesterday</span>
                 </div>
               )}
             </div>
-            <ShoppingCart className="w-8 h-8 text-blue-500 opacity-20" />
+            <div className="bg-blue-100 p-4 rounded-xl">
+              <ShoppingCart className="w-8 h-8 text-blue-600" />
+            </div>
           </div>
         </Card>
 
         {/* Today's Revenue */}
-        <Card>
+        <Card variant="elevated">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Today's Revenue</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">₹{stats.todayRevenue.toLocaleString()}</p>
+              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Today's Revenue</p>
+              <p className="text-3xl font-bold text-gray-900 mt-3">₹{stats.todayRevenue.toLocaleString()}</p>
               {revenueTrend !== 0 && (
-                <div className="flex items-center gap-1 mt-2">
+                <div className="flex items-center gap-1 mt-3">
                   {revenueTrend > 0 ? (
                     <>
                       <ArrowUp className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-600 font-medium">{revenueTrend}%</span>
+                      <span className="text-sm text-green-600 font-bold">{revenueTrend}%</span>
                     </>
                   ) : (
                     <>
                       <ArrowDown className="w-4 h-4 text-red-600" />
-                      <span className="text-sm text-red-600 font-medium">{Math.abs(revenueTrend)}%</span>
+                      <span className="text-sm text-red-600 font-bold">{Math.abs(revenueTrend)}%</span>
                     </>
                   )}
                   <span className="text-xs text-gray-500">vs yesterday</span>
                 </div>
               )}
             </div>
-            <TrendingUp className="w-8 h-8 text-green-500 opacity-20" />
+            <div className="bg-green-100 p-4 rounded-xl">
+              <TrendingUp className="w-8 h-8 text-green-600" />
+            </div>
           </div>
         </Card>
 
         {/* Total Stock Value */}
-        <Card>
+        <Card variant="elevated">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-600 text-sm font-medium">Total Stock Value</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">₹{stats.totalStockValue.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-2">{stats.totalStock} units in stock</p>
+              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Stock Value</p>
+              <p className="text-3xl font-bold text-gray-900 mt-3">₹{stats.totalStockValue.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-3 font-medium">{stats.totalStock} units</p>
             </div>
-            <Package className="w-8 h-8 text-purple-500 opacity-20" />
+            <div className="bg-purple-100 p-4 rounded-xl">
+              <Package className="w-8 h-8 text-purple-600" />
+            </div>
           </div>
         </Card>
 
         {/* Low Stock Alert */}
         <Card 
-          className={stats.lowStockCount > 0 ? 'border-red-200 bg-red-50' : ''}
+          variant={stats.lowStockCount > 0 ? "danger" : "elevated"}
+          className={stats.lowStockCount > 0 ? 'cursor-pointer hover:shadow-lg' : 'cursor-pointer hover:shadow-lg'}
           onClick={() => setShowLowStockModal(true)}
-          style={{ cursor: 'pointer' }}
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className={`text-sm font-medium ${stats.lowStockCount > 0 ? 'text-red-700' : 'text-gray-600'}`}>
-                Low Stock Items
+              <p className={`text-sm font-semibold uppercase tracking-wider ${stats.lowStockCount > 0 ? 'text-red-700' : 'text-gray-600'}`}>
+                Low Stock
               </p>
-              <p className={`text-2xl font-bold mt-2 ${stats.lowStockCount > 0 ? 'text-red-900' : 'text-gray-900'}`}>
+              <p className={`text-3xl font-bold mt-3 ${stats.lowStockCount > 0 ? 'text-red-900' : 'text-gray-900'}`}>
                 {stats.lowStockCount}
               </p>
-              <p className="text-xs text-gray-500 mt-2">Out of {stats.totalProducts} products</p>
+              <p className={`text-xs font-medium mt-3 ${stats.lowStockCount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                of {stats.totalProducts} products
+              </p>
             </div>
-            <AlertTriangle className={`w-8 h-8 opacity-20 ${stats.lowStockCount > 0 ? 'text-red-500' : 'text-gray-500'}`} />
+            <div className={`p-4 rounded-xl ${stats.lowStockCount > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
+              <AlertTriangle className={`w-8 h-8 ${stats.lowStockCount > 0 ? 'text-red-600' : 'text-gray-500'}`} />
+            </div>
           </div>
         </Card>
       </div>
@@ -237,60 +246,66 @@ export const Dashboard = () => {
       {/* Period Comparison Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Weekly */}
-        <Card>
+        <Card variant="default">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-5 h-5 text-blue-500" />
-              <p className="text-gray-600 text-sm font-medium">Weekly Performance</p>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-blue-100 p-2.5 rounded-lg">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+              </div>
+              <p className="text-gray-900 font-bold">Weekly Performance</p>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4 pl-11.5">
               <div>
-                <p className="text-xs text-gray-500">Sales Count</p>
-                <p className="text-xl font-bold text-gray-900">{stats.weeklySales}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Sales Count</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.weeklySales}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Revenue</p>
-                <p className="text-xl font-bold text-gray-900">₹{stats.weeklyRevenue.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Revenue</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">₹{stats.weeklyRevenue.toLocaleString()}</p>
               </div>
             </div>
           </div>
         </Card>
 
         {/* Monthly */}
-        <Card>
+        <Card variant="default">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5 text-purple-500" />
-              <p className="text-gray-600 text-sm font-medium">Monthly Performance</p>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-purple-100 p-2.5 rounded-lg">
+                <Calendar className="w-5 h-5 text-purple-600" />
+              </div>
+              <p className="text-gray-900 font-bold">Monthly Performance</p>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4 pl-11.5">
               <div>
-                <p className="text-xs text-gray-500">Sales Count</p>
-                <p className="text-xl font-bold text-gray-900">{stats.monthlySales}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Sales Count</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.monthlySales}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Revenue</p>
-                <p className="text-xl font-bold text-gray-900">₹{stats.monthlyRevenue.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Revenue</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">₹{stats.monthlyRevenue.toLocaleString()}</p>
               </div>
             </div>
           </div>
         </Card>
 
         {/* Yearly */}
-        <Card>
+        <Card variant="default">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="w-5 h-5 text-green-500" />
-              <p className="text-gray-600 text-sm font-medium">Yearly Performance</p>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-green-100 p-2.5 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-green-600" />
+              </div>
+              <p className="text-gray-900 font-bold">Yearly Performance</p>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4 pl-11.5">
               <div>
-                <p className="text-xs text-gray-500">Sales Count</p>
-                <p className="text-xl font-bold text-gray-900">{stats.yearlySales}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Sales Count</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.yearlySales}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Revenue</p>
-                <p className="text-xl font-bold text-gray-900">₹{stats.yearlyRevenue.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 font-medium uppercase">Revenue</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">₹{stats.yearlyRevenue.toLocaleString()}</p>
               </div>
             </div>
           </div>

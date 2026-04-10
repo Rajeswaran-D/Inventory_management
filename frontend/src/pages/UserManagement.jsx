@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Trash2, Plus, Lock, Shield, User, Eye, EyeOff } from 'lucide-react';
+import { Users, Trash2, Plus, Lock, Shield, User, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { authService } from '../services/authService';
@@ -107,14 +107,14 @@ export const UserManagement = () => {
   };
 
   return (
-    <div className="space-y-6 pb-10 px-4 md:px-6">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Shield className="w-7 h-7 text-indigo-600" />
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent flex items-center gap-3">
+          <Shield className="w-8 h-8 text-green-600" />
           User Management
         </h1>
-        <p className="text-sm text-gray-500 mt-1">Manage employee accounts and security settings</p>
+        <p className="text-gray-600 mt-2 font-medium">Manage employee accounts and security settings</p>
       </div>
 
       {/* Tab Navigation */}

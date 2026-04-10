@@ -131,18 +131,18 @@ export const Reports = () => {
     <div className="space-y-6 pb-12 px-4 md:px-6">
 
       {/* ── Page Header ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <BarChart3 className="w-7 h-7 text-indigo-600" />
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent flex items-center gap-3">
+            <BarChart3 className="w-8 h-8 text-green-600" />
             Reports & Analytics
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Period: {periodLabel}</p>
+          <p className="text-sm font-medium text-gray-500 mt-2">📅 Period: {periodLabel}</p>
         </div>
       </div>
 
       {/* ── Period Filter Bar ── */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-4 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col gap-4 shadow-sm">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-gray-500" />
           <span className="text-sm font-semibold text-gray-700">Filter Period</span>

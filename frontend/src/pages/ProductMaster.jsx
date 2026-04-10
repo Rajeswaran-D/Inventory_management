@@ -162,13 +162,13 @@ export const ProductMaster = () => {
   };
 
   return (
-    <div className="space-y-6 p-6 bg-white">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
           🏭 Product Master
         </h1>
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-gray-600 mt-2 font-medium">
           Manage product types and variants
         </p>
       </div>
@@ -184,11 +184,11 @@ export const ProductMaster = () => {
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <button
           onClick={() => fetchProducts(true)}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 active:scale-95"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh

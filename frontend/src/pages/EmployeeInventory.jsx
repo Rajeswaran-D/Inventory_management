@@ -96,11 +96,14 @@ const EmployeeInventory = () => {
   const lowStockCount = products.filter(p => (p.quantity || 0) < (p.minimumStockLevel || 50)).length;
 
   return (
-    <div className="space-y-6 p-6 bg-gray-50 min-h-screen">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">📦 Inventory Dashboard</h1>
-        <p className="text-sm text-gray-600 mt-1">Real-time view of stock levels and product details</p>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent flex items-center gap-3">
+          <Package className="w-8 h-8 text-green-600" />
+          Inventory Dashboard
+        </h1>
+        <p className="text-gray-600 mt-2 font-medium">Real-time view of stock levels and product details</p>
       </div>
 
       {/* Error Message */}

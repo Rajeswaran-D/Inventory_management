@@ -181,13 +181,13 @@ const Inventory = () => {
   const displayProducts = filteredProducts.length > 0 || searchQuery === '' ? filteredProducts : [];
 
   return (
-    <div className="space-y-6 p-6 bg-white">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
           📦 Inventory Management
         </h1>
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-gray-600 mt-2 font-medium">
           Manage products and stock levels efficiently
         </p>
       </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, X, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent } from './Card';
-import { envelopeService } from '../../services/api';
+import { envelopeService, inventoryService } from '../../services/api';
 
 export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
   const [lowStockItems, setLowStockItems] = useState([]);
@@ -11,8 +11,8 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
   const fetchLowStockItems = async () => {
     setLoading(true);
     try {
-      const res = await envelopeService.getAll({});
-      const items = (res.data || []).filter(item => item.quantity < 50).sort((a, b) => a.quantity - b.quantity);
+      const res = await inventoryService.getLowStock();
+      const items = (Array.isArray(res.data) ? res.data : res.data?.data || []).sort((a, b) => a.quantity - b.quantity);
       setLowStockItems(items);
     } catch (err) {
       console.error('Error fetching low stock items:', err);

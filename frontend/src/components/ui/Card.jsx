@@ -3,41 +3,25 @@ import { cn } from '../../utils/cn';
 export const Card = ({ 
   children, 
   className, 
-  variant = 'white', 
+  variant = 'default', 
   ...props 
 }) => {
-  const getVariantStyles = (variant) => {
-    if (variant === 'white') {
-      return {
-        backgroundColor: 'var(--bg-card)',
-        borderColor: 'var(--border)',
-        color: 'var(--text-primary)',
-      };
-    }
-    if (variant === 'highlight') {
-      return {
-        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-        borderColor: 'var(--primary)',
-        color: 'var(--text-primary)',
-      };
-    }
-    if (variant === 'danger') {
-      return {
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-        borderColor: '#DC2626',
-        color: 'var(--text-primary)',
-      };
-    }
-    return {};
+  const variants = {
+    default: 'bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md',
+    elevated: 'bg-white rounded-xl border border-gray-200 shadow-md hover:shadow-lg',
+    premium: 'bg-white rounded-2xl border border-gray-100 shadow-lg hover:shadow-xl',
+    highlight: 'bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-200 shadow-sm hover:shadow-md',
+    danger: 'bg-gradient-to-br from-red-50 to-white rounded-xl border border-red-200 shadow-sm hover:shadow-md',
+    warning: 'bg-gradient-to-br from-yellow-50 to-white rounded-xl border border-yellow-200 shadow-sm hover:shadow-md',
   };
 
   return (
     <div 
       className={cn(
-        "rounded-xl p-6 border shadow-md hover:shadow-lg transition-shadow duration-200",
+        'transition-all duration-200 p-6',
+        variants[variant],
         className
       )}
-      style={getVariantStyles(variant)}
       {...props}
     >
       {children}
@@ -51,17 +35,32 @@ export const CardHeader = ({ children, className }) => (
   </div>
 );
 
-export const CardTitle = ({ children, className }) => (
-  <h3 
-    className={cn("text-lg font-bold tracking-tight", className)}
-    style={{ color: 'var(--text-primary)' }}
-  >
-    {children}
-  </h3>
-);
+export const CardTitle = ({ children, className, size = 'base' }) => {
+  const sizes = {
+    xs: 'text-xs font-bold',
+    sm: 'text-sm font-bold',
+    base: 'text-lg font-bold',
+    lg: 'text-xl font-bold',
+    xl: 'text-2xl font-bold',
+  };
+  
+  return (
+    <h3 
+      className={cn(sizes[size], 'text-gray-900 tracking-tight', className)}
+    >
+      {children}
+    </h3>
+  );
+};
 
 export const CardContent = ({ children, className }) => (
   <div className={cn("space-y-4", className)}>
     {children}
   </div>
+);
+
+export const CardDescription = ({ children, className }) => (
+  <p className={cn("text-sm text-gray-600", className)}>
+    {children}
+  </p>
 );

@@ -212,16 +212,14 @@ export const Billing = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <ShoppingCart className="w-8 h-8" style={{ color: 'var(--primary)' }} />
-            Billing System
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Create invoice and process sales</p>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent flex items-center gap-3">
+          <ShoppingCart className="w-8 h-8 text-green-600" />
+          Billing System
+        </h1>
+        <p className="text-gray-600 mt-2 font-medium">Create invoices and process sales efficiently</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

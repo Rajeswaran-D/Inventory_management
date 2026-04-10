@@ -35,33 +35,33 @@ export const Login = ({ setIsAuthenticated }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-green-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8 transform transition-all duration-300 hover:shadow-emerald-100">
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8">
           {/* Logo / Header */}
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-200 ring-4 ring-emerald-50">
+            <div className="w-16 h-16 bg-gradient-to-br from-green-600 to-green-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <Lock className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Smart Inventory</h1>
-            <p className="text-sm text-gray-400 mt-2 font-medium uppercase tracking-widest">Authentication Portal</p>
+            <h1 className="text-3xl font-bold text-gray-900">Swamy Envelope</h1>
+            <p className="text-sm text-gray-500 mt-2 font-medium">Secure Access Portal</p>
           </div>
 
           {/* Error */}
           {error && (
-            <div className="mb-6 px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-600 flex items-center gap-3 animate-head-shake">
-              <span className="text-lg">✕</span>
+            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-center gap-2 animate-pulse">
+              <span className="text-lg">⚠️</span>
               {error}
             </div>
           )}
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider ml-1">Email Address</label>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Email Address</label>
               <div className="relative group">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
                 <input
                   type="email"
                   value={email}
@@ -69,15 +69,15 @@ export const Login = ({ setIsAuthenticated }) => {
                   placeholder="admin@company.com"
                   autoComplete="email"
                   disabled={loading}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:border-green-500 transition-all text-sm font-medium disabled:bg-gray-50"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider ml-1">Password</label>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Password</label>
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 group-focus-within:text-emerald-500 transition-colors" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -85,15 +85,15 @@ export const Login = ({ setIsAuthenticated }) => {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   disabled={loading}
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium"
+                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:border-green-500 transition-all text-sm font-medium disabled:bg-gray-50"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-600 p-1"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600 transition-colors p-1"
                   tabIndex={-1}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
@@ -101,22 +101,20 @@ export const Login = ({ setIsAuthenticated }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full relative overflow-hidden bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-bold py-3.5 rounded-xl transition-all duration-300 transform active:scale-[0.98] shadow-lg shadow-emerald-200/50"
+              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-3 rounded-lg transition-all duration-200 active:scale-95 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
             >
               {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  Verifying Credentials...
-                </span>
-              ) : 'Sign Into Account'}
+                <>
+                  <span className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                  <span>Verifying...</span>
+                </>
+              ) : 'Sign In'}
             </button>
           </form>
 
           {/* Footer */}
-          <div className="mt-10 pt-6 border-t border-gray-50 text-center">
-            <p className="text-xs font-bold text-gray-300 uppercase tracking-[0.2em]">
-              Secure Company Access
-            </p>
+          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Secure Business Portal</p>
           </div>
         </div>
       </div>

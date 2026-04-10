@@ -7,6 +7,17 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to include Authorization header
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
 export const envelopeService = {
   getAll: (params) => api.get('/envelopes', { params }),
   getById: (id) => api.get(`/envelopes/${id}`),
