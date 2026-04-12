@@ -401,10 +401,10 @@ export const BillHistory = () => {
                 <tbody className="divide-y divide-gray-100">
                   {filteredBills.map((bill, idx) => {
                     const billDateObj = new Date(bill.date || bill.createdAt);
-                    const billIdDisplay = bill.billNumber || bill._id.substring(0, 8).toUpperCase();
+                    const billIdDisplay = bill.billNumber || (bill._id || bill.id).substring(0, 8).toUpperCase();
                     return (
                       <tr
-                        key={bill._id}
+                        key={bill._id || bill.id}
                         className="hover:bg-gray-50 transition-colors bg-white"
                       >
                         <td className="px-6 py-4">

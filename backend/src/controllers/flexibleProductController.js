@@ -1,9 +1,4 @@
-/**
- * FLEXIBLE PRODUCT CONTROLLER
- * Handles product and variant CRUD operations
- */
-
-const FlexibleProduct = require('../models/FlexibleProduct');
+const prisma = require('../utils/prismaClient');
 
 // ==================== PRODUCT OPERATIONS ====================
 
@@ -12,11 +7,20 @@ const FlexibleProduct = require('../models/FlexibleProduct');
  */
 exports.getAllProducts = async (req, res) => {
   try {
-    const products = await FlexibleProduct.find().sort({ created_at: -1 });
+    const products = await prisma.flexibleProduct.findMany({
+      orderBy: { created_at: 'desc' },
+      include: { variants: true }
+    });
+
+    const transformedProducts = products.map(p => ({
+      ...p,
+      _id: p.id,
+      variants: p.variants.map(v => ({ ...v, _id: v.id }))
+    }));
 
     res.json({
-      data: products,
-      count: products.length,
+      data: transformedProducts,
+      count: transformedProducts.length,
       message: 'Products retrieved successfully'
     });
   } catch (error) {
@@ -34,7 +38,10 @@ exports.getAllProducts = async (req, res) => {
 exports.getProductById = async (req, res) => {
   try {
     const { productId } = req.params;
-    const product = await FlexibleProduct.findById(productId);
+    const product = await prisma.flexibleProduct.findUnique({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     if (!product) {
       return res.status(404).json({
@@ -43,8 +50,14 @@ exports.getProductById = async (req, res) => {
       });
     }
 
+    const transformedProduct = {
+      ...product,
+      _id: product.id,
+      variants: product.variants.map(v => ({ ...v, _id: v.id }))
+    };
+
     res.json({
-      data: product,
+      data: transformedProduct,
       message: 'Product retrieved successfully'
     });
   } catch (error) {
@@ -63,7 +76,6 @@ exports.createProduct = async (req, res) => {
   try {
     const { name, displayName, description, variants } = req.body;
 
-    // Validation
     if (!name || !name.trim()) {
       return res.status(400).json({
         data: null,
@@ -78,10 +90,9 @@ exports.createProduct = async (req, res) => {
       });
     }
 
-    // Check for duplicate product (case-insensitive)
     const normalizedName = name.trim().toLowerCase();
-    const existingProduct = await FlexibleProduct.findOne({
-      name: normalizedName
+    const existingProduct = await prisma.flexibleProduct.findUnique({
+      where: { name: normalizedName }
     });
 
     if (existingProduct) {
@@ -91,18 +102,31 @@ exports.createProduct = async (req, res) => {
       });
     }
 
-    // Create product
-    const newProduct = new FlexibleProduct({
-      name: normalizedName,
-      displayName: displayName.trim(),
-      description,
-      variants: variants || []
+    // Use transaction if variants are provided
+    const newProduct = await prisma.flexibleProduct.create({
+      data: {
+        name: normalizedName,
+        displayName: displayName.trim(),
+        description: description || '',
+        variants: variants && variants.length > 0 ? {
+          create: variants.map(v => ({
+            type: v.type,
+            value: v.value,
+            price: Number(v.price),
+            stock: Number(v.stock),
+            unit: v.unit || 'pcs'
+          }))
+        } : undefined
+      },
+      include: { variants: true }
     });
 
-    await newProduct.save();
-
     res.status(201).json({
-      data: newProduct,
+      data: {
+        ...newProduct,
+        _id: newProduct.id,
+        variants: newProduct.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Product created successfully'
     });
   } catch (error) {
@@ -122,22 +146,21 @@ exports.updateProduct = async (req, res) => {
     const { productId } = req.params;
     const { displayName, description } = req.body;
 
-    const product = await FlexibleProduct.findById(productId);
-
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
-
-    if (displayName) product.displayName = displayName.trim();
-    if (description !== undefined) product.description = description;
-
-    await product.save();
+    const updatedProduct = await prisma.flexibleProduct.update({
+      where: { id: productId },
+      data: {
+        displayName: displayName ? displayName.trim() : undefined,
+        description: description !== undefined ? description : undefined
+      },
+      include: { variants: true }
+    });
 
     res.json({
-      data: product,
+      data: {
+        ...updatedProduct,
+        _id: updatedProduct.id,
+        variants: updatedProduct.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Product updated successfully'
     });
   } catch (error) {
@@ -155,24 +178,26 @@ exports.updateProduct = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    const product = await FlexibleProduct.findByIdAndDelete(productId);
-
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
+    
+    // We can just call delete if it exists
+    const product = await prisma.flexibleProduct.delete({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     res.json({
-      data: product,
+      data: {
+        ...product,
+        _id: product.id,
+        variants: product.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Product deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting product:', error);
-    res.status(500).json({
+    res.status(404).json({
       data: null,
-      message: `Error deleting product: ${error.message}`
+      message: 'Product not found or already deleted'
     });
   }
 };
@@ -187,7 +212,6 @@ exports.addVariant = async (req, res) => {
     const { productId } = req.params;
     const { type, value, price, stock, unit } = req.body;
 
-    // Validation
     if (!type || !type.trim()) {
       return res.status(400).json({
         data: null,
@@ -209,52 +233,47 @@ exports.addVariant = async (req, res) => {
       });
     }
 
-    if (stock === undefined || stock < 0) {
-      return res.status(400).json({
-        data: null,
-        message: 'Valid stock is required (>= 0)'
-      });
-    }
-
-    const product = await FlexibleProduct.findById(productId);
-
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
-
-    // Check for duplicate variant (same type + value)
     const normalizedType = type.trim().toLowerCase();
     const normalizedValue = value.trim();
 
-    const variantExists = product.variants.some(
-      v =>
-        v.type.toLowerCase() === normalizedType &&
-        v.value === normalizedValue
-    );
+    // Check if duplicate variant exists
+    const duplicate = await prisma.flexibleProductVariant.findFirst({
+      where: {
+        flexibleProductId: productId,
+        type: normalizedType,
+        value: normalizedValue
+      }
+    });
 
-    if (variantExists) {
+    if (duplicate) {
       return res.status(400).json({
         data: null,
         message: 'This variant already exists for this product'
       });
     }
 
-    // Add variant
-    product.variants.push({
-      type: normalizedType,
-      value: normalizedValue,
-      price: Number(price),
-      stock: Number(stock),
-      unit: unit || 'pcs'
+    const variant = await prisma.flexibleProductVariant.create({
+      data: {
+        flexibleProductId: productId,
+        type: normalizedType,
+        value: normalizedValue,
+        price: Number(price),
+        stock: Number(stock || 0),
+        unit: unit || 'pcs'
+      }
     });
 
-    await product.save();
+    const product = await prisma.flexibleProduct.findUnique({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     res.status(201).json({
-      data: product,
+      data: {
+        ...product,
+        _id: product.id,
+        variants: product.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Variant added successfully'
     });
   } catch (error) {
@@ -274,35 +293,28 @@ exports.updateVariant = async (req, res) => {
     const { productId, variantId } = req.params;
     const { type, value, price, stock, unit } = req.body;
 
-    const product = await FlexibleProduct.findById(productId);
+    await prisma.flexibleProductVariant.update({
+      where: { id: variantId },
+      data: {
+        type: type ? type.trim().toLowerCase() : undefined,
+        value: value ? value.trim() : undefined,
+        price: price !== undefined ? Number(price) : undefined,
+        stock: stock !== undefined ? Number(stock) : undefined,
+        unit: unit || undefined
+      }
+    });
 
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
-
-    const variant = product.variants.id(variantId);
-
-    if (!variant) {
-      return res.status(404).json({
-        data: null,
-        message: 'Variant not found'
-      });
-    }
-
-    // Update fields
-    if (type) variant.type = type.trim().toLowerCase();
-    if (value) variant.value = value.trim();
-    if (price !== undefined) variant.price = Number(price);
-    if (stock !== undefined) variant.stock = Number(stock);
-    if (unit) variant.unit = unit;
-
-    await product.save();
+    const product = await prisma.flexibleProduct.findUnique({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     res.json({
-      data: product,
+      data: {
+        ...product,
+        _id: product.id,
+        variants: product.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Variant updated successfully'
     });
   } catch (error) {
@@ -321,29 +333,21 @@ exports.deleteVariant = async (req, res) => {
   try {
     const { productId, variantId } = req.params;
 
-    const product = await FlexibleProduct.findById(productId);
+    await prisma.flexibleProductVariant.delete({
+      where: { id: variantId }
+    });
 
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
-
-    const variant = product.variants.id(variantId);
-
-    if (!variant) {
-      return res.status(404).json({
-        data: null,
-        message: 'Variant not found'
-      });
-    }
-
-    variant.deleteOne();
-    await product.save();
+    const product = await prisma.flexibleProduct.findUnique({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     res.json({
-      data: product,
+      data: {
+        ...product,
+        _id: product.id,
+        variants: product.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: 'Variant deleted successfully'
     });
   } catch (error) {
@@ -370,36 +374,35 @@ exports.reduceVariantStock = async (req, res) => {
       });
     }
 
-    const product = await FlexibleProduct.findById(productId);
+    const variant = await prisma.flexibleProductVariant.findUnique({
+      where: { id: variantId }
+    });
 
-    if (!product) {
-      return res.status(404).json({
-        data: null,
-        message: 'Product not found'
-      });
-    }
-
-    const variant = product.variants.id(variantId);
-
-    if (!variant) {
-      return res.status(404).json({
-        data: null,
-        message: 'Variant not found'
-      });
-    }
-
-    if (variant.stock < quantity) {
+    if (!variant || variant.stock < quantity) {
       return res.status(400).json({
         data: null,
-        message: 'Insufficient stock'
+        message: 'Insufficient stock or variant not found'
       });
     }
 
-    variant.stock -= quantity;
-    await product.save();
+    await prisma.flexibleProductVariant.update({
+      where: { id: variantId },
+      data: {
+        stock: { decrement: Number(quantity) }
+      }
+    });
+
+    const product = await prisma.flexibleProduct.findUnique({
+      where: { id: productId },
+      include: { variants: true }
+    });
 
     res.json({
-      data: product,
+      data: {
+        ...product,
+        _id: product.id,
+        variants: product.variants.map(v => ({ ...v, _id: v.id }))
+      },
       message: `Stock reduced by ${quantity}`
     });
   } catch (error) {
@@ -418,18 +421,15 @@ exports.getVariants = async (req, res) => {
   try {
     const { productId } = req.params;
 
-    const product = await FlexibleProduct.findById(productId);
+    const variants = await prisma.flexibleProductVariant.findMany({
+      where: { flexibleProductId: productId }
+    });
 
-    if (!product) {
-      return res.status(404).json({
-        data: [],
-        message: 'Product not found'
-      });
-    }
+    const transformedVariants = variants.map(v => ({ ...v, _id: v.id }));
 
     res.json({
-      data: product.variants,
-      count: product.variants.length,
+      data: transformedVariants,
+      count: transformedVariants.length,
       message: 'Variants retrieved successfully'
     });
   } catch (error) {
@@ -448,22 +448,20 @@ exports.getLowStockVariants = async (req, res) => {
   try {
     const { threshold = 10 } = req.query;
 
-    const products = await FlexibleProduct.find();
-
-    const lowStockVariants = [];
-
-    products.forEach(product => {
-      product.variants.forEach(variant => {
-        if (variant.stock <= Number(threshold)) {
-          lowStockVariants.push({
-            productId: product._id,
-            productName: product.displayName,
-            variant: variant,
-            stock: variant.stock
-          });
-        }
-      });
+    const variants = await prisma.flexibleProductVariant.findMany({
+      where: {
+        stock: { lte: Number(threshold) }
+      },
+      include: { product: true }
     });
+
+    const lowStockVariants = variants.map(variant => ({
+      productId: variant.product.id,
+      _id: variant.product.id,
+      productName: variant.product.displayName,
+      variant: { ...variant, _id: variant.id },
+      stock: variant.stock
+    }));
 
     res.json({
       data: lowStockVariants,
@@ -493,16 +491,27 @@ exports.searchProducts = async (req, res) => {
       });
     }
 
-    const products = await FlexibleProduct.find({
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { displayName: { $regex: query, $options: 'i' } }
-      ]
+    const searchTerm = query.trim();
+
+    const products = await prisma.flexibleProduct.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm } },
+          { displayName: { contains: searchTerm } }
+        ]
+      },
+      include: { variants: true }
     });
 
+    const transformedProducts = products.map(p => ({
+      ...p,
+      _id: p.id,
+      variants: p.variants.map(v => ({ ...v, _id: v.id }))
+    }));
+
     res.json({
-      data: products,
-      count: products.length,
+      data: transformedProducts,
+      count: transformedProducts.length,
       message: 'Products found'
     });
   } catch (error) {

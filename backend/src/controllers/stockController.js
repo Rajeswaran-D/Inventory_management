@@ -1,23 +1,25 @@
-const StockTransaction = require('../models/StockTransaction');
-const Envelope = require('../models/Envelope');
+const prisma = require('../utils/prismaClient');
 
 // Add stock (IN)
 exports.recordStockIn = async (req, res, next) => {
   try {
     const { envelopeId, quantity, date } = req.body;
     
-    // Create transaction record
-    const transaction = new StockTransaction({ envelopeId, quantity, type: 'IN', date });
-    await transaction.save();
+    // Check envelope exists
+    const envelope = await prisma.envelope.findUnique({ where: { id: envelopeId } });
+    if (!envelope) return res.status(404).json({ message: 'Envelope not found' });
 
-    // Update envelope quantity
-    const updated = await Envelope.findByIdAndUpdate(
-      envelopeId,
-      { $inc: { quantity: quantity } },
-      { new: true, runValidators: true }
-    );
+    // Create transaction record and update in transaction
+    const [transaction, updated] = await prisma.$transaction([
+      prisma.stockTransaction.create({
+        data: { envelopeId, quantity: parseInt(quantity), type: 'IN', date: date ? new Date(date) : new Date() }
+      }),
+      prisma.envelope.update({
+        where: { id: envelopeId },
+        data: { quantity: { increment: parseInt(quantity) } }
+      })
+    ]);
 
-    if (!updated) return res.status(404).json({ message: 'Envelope not found' });
     res.status(201).json({ message: 'Stock added successfully', transaction, updatedEnvelope: updated });
   } catch (err) {
     next(err);
@@ -28,24 +30,24 @@ exports.recordStockIn = async (req, res, next) => {
 exports.recordStockOut = async (req, res, next) => {
   try {
     const { envelopeId, quantity, date } = req.body;
+    const parsedQty = parseInt(quantity);
 
     // Check availability
-    const envelope = await Envelope.findById(envelopeId);
-    if (!envelope) return res.status(404).json({ message: 'Envelope not found or deactivated.' });
-    if (envelope.quantity < quantity) {
+    const envelope = await prisma.envelope.findUnique({ where: { id: envelopeId } });
+    if (!envelope || !envelope.isActive) return res.status(404).json({ message: 'Envelope not found or deactivated.' });
+    if (envelope.quantity < parsedQty) {
       return res.status(400).json({ message: `Insufficient stock. Current: ${envelope.quantity}` });
     }
 
-    // Create transaction record
-    const transaction = new StockTransaction({ envelopeId, quantity, type: 'OUT', date });
-    await transaction.save();
-
-    // Update envelope quantity
-    const updated = await Envelope.findByIdAndUpdate(
-      envelopeId,
-      { $inc: { quantity: -quantity } },
-      { new: true, runValidators: true }
-    );
+    const [transaction, updated] = await prisma.$transaction([
+      prisma.stockTransaction.create({
+        data: { envelopeId, quantity: parsedQty, type: 'OUT', date: date ? new Date(date) : new Date() }
+      }),
+      prisma.envelope.update({
+        where: { id: envelopeId },
+        data: { quantity: { decrement: parsedQty } }
+      })
+    ]);
 
     res.status(201).json({ message: 'Stock removed successfully', transaction, updatedEnvelope: updated });
   } catch (err) {
@@ -57,20 +59,43 @@ exports.recordStockOut = async (req, res, next) => {
 exports.getStockHistory = async (req, res, next) => {
   try {
     const { envelopeId, type, startDate, endDate } = req.query;
-    let query = {};
-    if (envelopeId) query.envelopeId = envelopeId;
-    if (type) query.type = type;
+    let whereClause = {};
+    if (envelopeId) whereClause.envelopeId = envelopeId;
+    if (type) whereClause.type = type;
     if (startDate && endDate) {
-      query.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+      whereClause.date = { 
+        gte: new Date(startDate), 
+        lte: new Date(endDate) 
       };
     }
 
-    const history = await StockTransaction.find(query)
-      .populate('envelopeId', 'size materialType gsm color')
-      .sort({ date: -1 });
-    res.status(200).json(history);
+    const history = await prisma.stockTransaction.findMany({
+      where: whereClause,
+      orderBy: { date: 'desc' }
+    });
+    
+    // Loose relation emulation (Manual populate)
+    const envelopeIds = [...new Set(history.map(h => h.envelopeId).filter(Boolean))];
+    const envelopes = await prisma.envelope.findMany({
+      where: { id: { in: envelopeIds } },
+      select: { id: true, size: true, materialType: true, gsm: true, color: true }
+    });
+    
+    const envelopeMap = envelopes.reduce((acc, env) => { 
+        // Emulate mongoose _id
+        acc[env.id] = { ...env, _id: env.id }; 
+        return acc; 
+    }, {});
+    
+    const mappedHistory = history.map(h => {
+        const obj = { ...h };
+        if (h.envelopeId && envelopeMap[h.envelopeId]) {
+            obj.envelopeId = envelopeMap[h.envelopeId];
+        }
+        return obj;
+    });
+
+    res.status(200).json(mappedHistory);
   } catch (err) {
     next(err);
   }

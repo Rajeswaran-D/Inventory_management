@@ -30,8 +30,8 @@ router.delete('/master/:id', productController.deleteProduct);
 
 // ===== PRODUCT VARIANT ROUTES =====
 
-// Get all variants
-router.get('/variants', productController.getAllVariants);
+// Get variants (optionally filtered by productId query param)
+router.get('/variants', productController.getVariants);
 
 // Get variant by ID
 router.get('/variants/:id', productController.getVariantById);
@@ -42,8 +42,8 @@ router.post('/variants', productController.createVariant);
 // Update variant
 router.put('/variants/:id', productController.updateVariant);
 
-// Delete variant (with inventory cleanup)
-router.delete('/variants/:id', productController.deleteVariant);
+// Unified Full Product Creation (Master + Variant)
+router.post('/create-full', productController.createFullProduct);
 
 // ===== DROPDOWN DATA ROUTES (Dynamic UI Support) =====
 

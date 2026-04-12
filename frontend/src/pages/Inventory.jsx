@@ -301,7 +301,7 @@ const Inventory = () => {
                   const status = getStockStatus(product.quantity || 0, minimum);
 
                   return (
-                    <tr key={product._id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={product._id || product.id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4">
                         <span className="font-medium text-gray-900">
                           {variant?.displayName || 'N/A'}

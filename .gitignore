@@ -1,1 +1,77 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+/dist
+/frontend/dist
+/backend/dist
+/out
+
+# MongoDB (bundled portable version and data)
+/mongodb/*.exe
+/mongodb/*.msi
+/mongodb/*.zip
+/mongodb/bin/
+/mongodb/lib/
+!/mongodb/README.md
+!/mongodb/MONGODB_SETUP_INSTRUCTIONS.md
+
+# Database files
+/data/
+/data/db/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.class
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Distribution
+dist/
+*.exe
+*.deb
+*.dmg
+*.AppImage
+*.tar.gz
+
+# Development
+.parcel-cache/
+coverage/
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Backups
+backup/
+*.backup
+*.bak
+
+# Testing
+__pycache__/
+.pytest_cache/
+

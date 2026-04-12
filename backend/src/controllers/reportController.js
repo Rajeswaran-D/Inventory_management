@@ -1,5 +1,4 @@
-const Sale = require('../models/Sale');
-const Inventory = require('../models/Inventory');
+const prisma = require('../utils/prismaClient');
 const ExcelJS = require('exceljs');
 
 exports.getReports = async (req, res) => {
@@ -9,117 +8,86 @@ exports.getReports = async (req, res) => {
     let matchQuery = {};
     if (startDate && endDate) {
       matchQuery.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
+        gte: new Date(startDate), 
+        lte: new Date(endDate) 
       };
     } else {
-      // Default to last 30 days
       const defaultStart = new Date();
       defaultStart.setHours(0,0,0,0);
       defaultStart.setDate(defaultStart.getDate() - 30);
-      matchQuery.date = { $gte: defaultStart };
+      matchQuery.date = { gte: defaultStart };
     }
 
+    // Fetch all applicable sales with items
+    const sales = await prisma.sale.findMany({
+      where: matchQuery,
+      include: { items: true },
+      orderBy: { date: 'asc' }
+    });
+
     // 1. Revenue and Sales by Date
-    const dailyAnalytics = await Sale.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
-          revenue: { $sum: '$grandTotal' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    const dailyAnalyticsMap = {};
+    sales.forEach(sale => {
+      const dateStr = sale.date.toISOString().split('T')[0];
+      if (!dailyAnalyticsMap[dateStr]) {
+        dailyAnalyticsMap[dateStr] = { revenue: 0, count: 0 };
+      }
+      dailyAnalyticsMap[dateStr].revenue += sale.grandTotal;
+      dailyAnalyticsMap[dateStr].count += 1;
+    });
 
-    const revenueByDate = dailyAnalytics.map(day => ({
-      date: day._id,
-      revenue: parseFloat(day.revenue.toFixed(2))
-    }));
-
-    const salesCount = dailyAnalytics.map(day => ({
-      date: day._id,
-      count: day.count
-    }));
+    const revenueByDate = [];
+    const salesCount = [];
+    Object.keys(dailyAnalyticsMap).sort().forEach(date => {
+      revenueByDate.push({ date, revenue: parseFloat(dailyAnalyticsMap[date].revenue.toFixed(2)) });
+      salesCount.push({ date, count: dailyAnalyticsMap[date].count });
+    });
 
     // 2. Top Selling Products
-    const topProducts = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' }
+    const productStatsMap = {};
+    let totalRevenue = 0;
+    let totalItems = 0;
+    
+    sales.forEach(sale => {
+      totalRevenue += sale.grandTotal;
+      totalItems += sale.items.length;
+      sale.items.forEach(item => {
+        const name = item.displayName || 'Unknown';
+        if (!productStatsMap[name]) {
+          productStatsMap[name] = { quantity: 0, revenue: 0 };
         }
-      },
-      { $sort: { quantity: -1 } },
-      { $limit: 10 },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1
-        }
-      }
-    ]);
+        productStatsMap[name].quantity += item.quantity;
+        productStatsMap[name].revenue += item.itemTotal;
+      });
+    });
+
+    const productStatsArr = Object.keys(productStatsMap).map(name => ({
+      name,
+      quantity: productStatsMap[name].quantity,
+      revenue: parseFloat(productStatsMap[name].revenue.toFixed(2))
+    }));
+
+    const topProducts = [...productStatsArr].sort((a, b) => b.quantity - a.quantity).slice(0, 10);
+    const productStats = [...productStatsArr].sort((a, b) => b.revenue - a.revenue);
 
     // 3. Low Stock Analytics
-    const inventory = await Inventory.find({ isActive: true });
+    const inventory = await prisma.inventory.findMany({ where: { isActive: true } });
     let lowStock = 0;
     let sufficientStock = 0;
 
     inventory.forEach(item => {
       const minStock = item.minimumStockLevel || 50;
-      if (item.quantity < minStock) {
-        lowStock++;
-      } else {
-        sufficientStock++;
-      }
+      if (item.quantity < minStock) lowStock++;
+      else sufficientStock++;
     });
 
     const lowStockAnalytics = [
-      { name: 'Low Stock', value: lowStock, fill: '#ef4444' }, // red-500
-      { name: 'Sufficient', value: sufficientStock, fill: '#10b981' } // emerald-500
+      { name: 'Low Stock', value: lowStock, fill: '#ef4444' }, 
+      { name: 'Sufficient', value: sufficientStock, fill: '#10b981' } 
     ];
 
-    // 4. Complete Product Stats (for detailed view)
-    const productStats = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' },
-          revenue: { $sum: '$items.itemTotal' }
-        }
-      },
-      { $sort: { revenue: -1 } },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1,
-          revenue: 1
-        }
-      }
-    ]);
-
-    // 5. Summary Metrics
-    const summaryAgg = await Sale.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: 1 },
-          totalRevenue: { $sum: '$grandTotal' },
-          totalItems: { $sum: { $size: '$items' } }
-        }
-      }
-    ]);
-    
-    const summaryData = summaryAgg[0] || { totalSales: 0, totalRevenue: 0, totalItems: 0 };
-    const averageOrderValue = summaryData.totalSales > 0 ? (summaryData.totalRevenue / summaryData.totalSales) : 0;
+    const totalSales = sales.length;
+    const averageOrderValue = totalSales > 0 ? (totalRevenue / totalSales) : 0;
 
     res.status(200).json({
       success: true,
@@ -130,12 +98,7 @@ exports.getReports = async (req, res) => {
         lowStockCount: lowStock,
         lowStockAnalytics,
         productStats,
-        summary: {
-          totalSales: summaryData.totalSales,
-          totalRevenue: summaryData.totalRevenue,
-          totalItems: summaryData.totalItems,
-          averageOrderValue: averageOrderValue
-        }
+        summary: { totalSales, totalRevenue, totalItems, averageOrderValue }
       }
     });
   } catch (error) {
@@ -149,37 +112,36 @@ exports.downloadReportExcel = async (req, res) => {
     const { startDate, endDate } = req.query;
     let matchQuery = {};
     if (startDate && endDate) {
-      matchQuery.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
-      };
+      matchQuery.date = { gte: new Date(startDate), lte: new Date(endDate) };
     } else {
       const defaultStart = new Date();
       defaultStart.setHours(0,0,0,0);
       defaultStart.setDate(defaultStart.getDate() - 30);
-      matchQuery.date = { $gte: defaultStart };
+      matchQuery.date = { gte: defaultStart };
     }
 
-    const productStats = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' },
-          revenue: { $sum: '$items.itemTotal' }
-        }
-      },
-      { $sort: { revenue: -1 } },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1,
-          revenue: 1
-        }
-      }
-    ]);
+    const sales = await prisma.sale.findMany({
+      where: matchQuery,
+      include: { items: true }
+    });
+
+    const productStatsMap = {};
+    sales.forEach(sale => {
+      sale.items.forEach(item => {
+        const name = item.displayName || 'Unknown';
+        if (!productStatsMap[name]) productStatsMap[name] = { quantity: 0, revenue: 0 };
+        productStatsMap[name].quantity += item.quantity;
+        productStatsMap[name].revenue += item.itemTotal;
+      });
+    });
+
+    const productStats = Object.keys(productStatsMap)
+      .map(name => ({
+        name,
+        quantity: productStatsMap[name].quantity,
+        revenue: productStatsMap[name].revenue
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sales Report');
@@ -191,13 +153,7 @@ exports.downloadReportExcel = async (req, res) => {
     ];
     worksheet.getRow(1).font = { bold: true };
 
-    productStats.forEach(stat => {
-      worksheet.addRow({
-        name: stat.name,
-        quantity: stat.quantity,
-        revenue: stat.revenue
-      });
-    });
+    productStats.forEach(stat => worksheet.addRow(stat));
 
     res.setHeader('Content-Disposition', 'attachment; filename=sales_report.xlsx');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

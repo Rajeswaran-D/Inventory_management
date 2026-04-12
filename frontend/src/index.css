@@ -123,7 +123,7 @@ body {
 }
 
 .card-premium {
-  @apply bg-white rounded-2xl border border-gray-150 shadow-lg hover:shadow-xl transition-all duration-200;
+  @apply bg-white rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200;
 }
 
 /* ============================================
@@ -196,28 +196,32 @@ body {
 
 @keyframes slideInDown {
   from {
-    @apply opacity-0 -translate-y-2;
+    opacity: 0;
+    transform: translateY(-0.5rem);
   }
   to {
-    @apply opacity-100 translate-y-0;
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes slideInUp {
   from {
-    @apply opacity-0 translate-y-2;
+    opacity: 0;
+    transform: translateY(0.5rem);
   }
   to {
-    @apply opacity-100 translate-y-0;
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes fadeIn {
   from {
-    @apply opacity-0;
+    opacity: 0;
   }
   to {
-    @apply opacity-100;
+    opacity: 1;
   }
 }
 

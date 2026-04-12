@@ -4,11 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { Plus, Trash2 } from 'lucide-react';
+import { flexibleProductService } from '../services/api';
 import '../styles/ProductManagement.css';
-
-const API_BASE = 'http://localhost:5000/api/flexible-products';
 
 const VARIANT_TYPES = ['size', 'gsm', 'weight', 'custom'];
 
@@ -22,8 +20,6 @@ const VARIANT_VALUES = {
 export default function ProductManagement() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [editingVariant, setEditingVariant] = useState(null);
 
   // Form state for new product
   const [formData, setFormData] = useState({
@@ -52,7 +48,7 @@ export default function ProductManagement() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(API_BASE);
+      const response = await flexibleProductService.getAll();
       setProducts(response.data.data || []);
       setError('');
     } catch (err) {
@@ -91,13 +87,11 @@ export default function ProductManagement() {
 
   const validateForm = () => {
     // Validate product
-    let productName = '';
     if (formData.productInputType === 'select') {
       if (!formData.selectedProduct) {
         setError('Please select a product');
         return false;
       }
-      productName = formData.selectedProduct;
     } else {
       if (!formData.newProductName || !formData.newProductName.trim()) {
         setError('Please enter a product name');
@@ -107,7 +101,6 @@ export default function ProductManagement() {
         setError('Please enter a display name');
         return false;
       }
-      productName = formData.newProductName;
     }
 
     // Validate variant type
@@ -155,9 +148,9 @@ export default function ProductManagement() {
 
       if (formData.productInputType === 'select') {
         // Add variant to existing product
-        const product = products.find(p => p._id === formData.selectedProduct);
+        const product = products.find(p => (p._id || p.id) === formData.selectedProduct);
 
-        const response = await axios.post(`${API_BASE}/${formData.selectedProduct}/variants`, {
+        const response = await flexibleProductService.addVariant(formData.selectedProduct, {
           type: variantType,
           value: variantValue,
           price: Number(formData.price),
@@ -166,7 +159,7 @@ export default function ProductManagement() {
         });
 
         setProducts(prev =>
-          prev.map(p => (p._id === response.data.data._id ? response.data.data : p))
+          prev.map(p => ((p._id || p.id) === (response.data.data._id || response.data.data.id) ? response.data.data : p))
         );
 
         setSuccess(
@@ -174,7 +167,7 @@ export default function ProductManagement() {
         );
       } else {
         // Create new product with variant
-        const response = await axios.post(API_BASE, {
+        const response = await flexibleProductService.create({
           name: formData.newProductName.trim().toLowerCase(),
           displayName: formData.newProductDisplay.trim(),
           description: formData.newProductDescription,
@@ -206,8 +199,8 @@ export default function ProductManagement() {
     }
 
     try {
-      await axios.delete(`${API_BASE}/${productId}`);
-      setProducts(prev => prev.filter(p => p._id !== productId));
+      await flexibleProductService.delete(productId);
+      setProducts(prev => prev.filter(p => (p._id !== productId && p.id !== productId)));
       setSuccess('Product deleted successfully');
     } catch (err) {
       console.error('Error deleting product:', err);
@@ -221,9 +214,9 @@ export default function ProductManagement() {
     }
 
     try {
-      const response = await axios.delete(`${API_BASE}/${productId}/variants/${variantId}`);
+      const response = await flexibleProductService.deleteVariant(productId, variantId);
       setProducts(prev =>
-        prev.map(p => (p._id === response.data.data._id ? response.data.data : p))
+        prev.map(p => ((p._id || p.id) === (response.data.data._id || response.data.data.id) ? response.data.data : p))
       );
       setSuccess('Variant deleted successfully');
     } catch (err) {
@@ -286,7 +279,7 @@ export default function ProductManagement() {
                 >
                   <option value="">-- Select Product --</option>
                   {products.map(p => (
-                    <option key={p._id} value={p._id}>
+                    <option key={p._id || p.id} value={p._id || p.id}>
                       {p.displayName}
                     </option>
                   ))}
@@ -458,12 +451,12 @@ export default function ProductManagement() {
         ) : (
           <div className="products-table">
             {products.map(product => (
-              <div key={product._id} className="product-card">
+              <div key={product._id || product.id} className="product-card">
                 <div className="product-header">
                   <h3>{product.displayName}</h3>
                   <button
                     className="btn btn-danger btn-sm"
-                    onClick={() => handleDeleteProduct(product._id)}
+                    onClick={() => handleDeleteProduct(product._id || product.id)}
                     title="Delete product"
                   >
                     <Trash2 /> Delete Product
@@ -478,7 +471,7 @@ export default function ProductManagement() {
                   <div className="variants-list">
                     <h4>Variants ({product.variants.length}):</h4>
                     {product.variants.map(variant => (
-                      <div key={variant.variant_id} className="variant-item">
+                      <div key={variant._id || variant.id} className="variant-item">
                         <div className="variant-info">
                           <strong>
                             {variant.type.charAt(0).toUpperCase() + variant.type.slice(1)}:
@@ -486,7 +479,7 @@ export default function ProductManagement() {
                           {variant.value}
                         </div>
                         <div className="variant-details">
-                          <span className="detail">💰 ₹{variant.price.toFixed(2)}</span>
+                          <span className="detail">💰 ₹{variant.price ? variant.price.toFixed(2) : '0.00'}</span>
                           <span className="detail">
                             📦 {variant.stock} {variant.unit}
                           </span>
@@ -497,7 +490,7 @@ export default function ProductManagement() {
                         <button
                           className="btn btn-danger btn-sm"
                           onClick={() =>
-                            handleDeleteVariant(product._id, variant.variant_id)
+                            handleDeleteVariant(product._id || product.id, variant._id || variant.id)
                           }
                           title="Delete variant"
                         >

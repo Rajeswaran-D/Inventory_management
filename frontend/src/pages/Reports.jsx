@@ -342,7 +342,7 @@ export const Reports = () => {
                             ? ((stat.revenue / totalRevenue) * 100).toFixed(1)
                             : 0;
                           return (
-                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                            <tr key={stat._id || stat.id || `stat-${i}`} className="hover:bg-gray-50 transition-colors">
                               <td className="px-6 py-4 font-semibold text-gray-900">{stat.name}</td>
                               <td className="px-6 py-4 text-center">
                                 <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">

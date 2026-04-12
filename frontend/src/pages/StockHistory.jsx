@@ -84,7 +84,7 @@ export const StockHistory = () => {
                <div className="p-20 text-center text-gray-600 dark:text-gray-400">No records found for the selected period.</div>
             ) : (
               history.map((record) => (
-                <div key={record._id} className="flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors group">
+                <div key={record._id || record.id} className="flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors group">
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center shadow-sm transition-transform group-hover:scale-110 ${record.type === 'IN' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
                       {record.type === 'IN' ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}

@@ -1,22 +1,35 @@
 {
-  "name": "inventory-management-system",
+  "name": "swamy-envelope-desktop",
   "version": "1.0.0",
-  "description": "Smart Inventory & Billing System - Frontend + Backend",
+  "description": "Smart Inventory & Billing System - Desktop Application",
   "private": true,
+  "main": "electron.js",
+  "homepage": "./",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:desktop": "concurrently \"wait-on http://localhost:5000 && electron .\" \"npm run server\" \"npm run client:dev\"",
     "client": "cd frontend && npm run dev",
+    "client:dev": "cd frontend && npm run dev",
     "server": "cd backend && npm run dev",
     "build": "cd frontend && npm run build",
+    "build:electron": "npm run build && electron-builder",
     "start": "cd backend && npm start",
+    "electron": "electron .",
+    "electron-dev": "electron-is-dev",
+    "electron-start": "wait-on http://localhost:3000 && electron .",
     "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "seed": "cd backend && npm run seed"
+    "seed": "cd backend && npm run seed",
+    "dist": "npm run build:electron"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.27",
+    "concurrently": "^8.2.2",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "electron-is-dev": "^2.0.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "concurrently": "^8.2.2"
+    "wait-on": "^7.2.0"
   },
   "dependencies": {
     "axios": "^1.14.0",
@@ -40,5 +53,49 @@
     "envelope"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "build": {
+    "appId": "com.swamyenvelope.app",
+    "productName": "Swamy Envelope",
+    "files": [
+      "electron.js",
+      "preload.js",
+      "frontend/dist/**/*",
+      "backend/**/*",
+      "mongodb/**/*",
+      "data/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "frontend/public"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "certificateFile": null,
+      "certificatePassword": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Swamy Envelope"
+    },
+    "portable": {
+      "artifactName": "${productName}-Setup.exe"
+    }
+  }
 }

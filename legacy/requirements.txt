@@ -1,9 +1,0 @@
-flask
-flask-sqlalchemy
-flask-cors
-flask-marshmallow
-marshmallow-sqlalchemy
-python-dotenv
-pandas
-openpyxl
-reportlab

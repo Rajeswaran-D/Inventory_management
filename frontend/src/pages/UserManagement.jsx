@@ -247,7 +247,7 @@ export const UserManagement = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {users.map(u => (
-                      <tr key={u._id} className={`hover:bg-gray-50 transition-colors ${u._id === currentUser?.id ? 'bg-indigo-50/50' : ''}`}>
+                      <tr key={u._id || u.id} className={`hover:bg-gray-50 transition-colors ${u._id === currentUser?.id || u.id === currentUser?.id ? 'bg-indigo-50/50' : ''}`}>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
@@ -255,7 +255,7 @@ export const UserManagement = () => {
                             </div>
                             <span className="font-semibold text-gray-900">
                               {u.name}
-                              {u._id === currentUser?.id && (
+                              {(u._id === currentUser?.id || u.id === currentUser?.id) && (
                                 <span className="ml-2 text-xs text-indigo-500 font-medium">(you)</span>
                               )}
                             </span>
@@ -271,9 +271,9 @@ export const UserManagement = () => {
                           {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
                         </td>
                         <td className="px-6 py-4 text-center">
-                          {u._id !== currentUser?.id ? (
+                          {u._id !== currentUser?.id && u.id !== currentUser?.id ? (
                             <button
-                              onClick={() => handleDelete(u._id, u.name)}
+                              onClick={() => handleDelete(u._id || u.id, u.name)}
                               className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                               title="Delete user"
                             >

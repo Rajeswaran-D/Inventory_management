@@ -81,6 +81,7 @@ export const productService = {
   getGSMOptions: (productId) => api.get('/products/dropdowns/gsm', { params: { productId } }),
   getSizeOptions: (productId) => api.get('/products/dropdowns/sizes', { params: { productId } }),
   getColorOptions: (productId) => api.get('/products/dropdowns/colors', { params: { productId } }),
+  createFullProduct: (data) => api.post('/products/create-full', data),
 };
 
 export const inventoryService = {
@@ -125,6 +126,19 @@ export const pricingTierService = {
 export const reportService = {
   getAnalytics: (params) => api.get('/reports', { params }),
   downloadReport: (params) => api.get('/reports/download', { params, responseType: 'blob' })
+};
+
+export const flexibleProductService = {
+  getAll: () => api.get('/flexible-products'),
+  getById: (id) => api.get(`/flexible-products/${id}`),
+  create: (data) => api.post('/flexible-products', data),
+  update: (id, data) => api.put(`/flexible-products/${id}`, data),
+  delete: (id) => api.delete(`/flexible-products/${id}`),
+  addVariant: (productId, data) => api.post(`/flexible-products/${productId}/variants`, data),
+  updateVariant: (productId, variantId, data) => api.put(`/flexible-products/${productId}/variants/${variantId}`, data),
+  deleteVariant: (productId, variantId) => api.delete(`/flexible-products/${productId}/variants/${variantId}`),
+  getLowStock: (threshold = 10) => api.get('/flexible-products/inventory/low-stock', { params: { threshold } }),
+  search: (query) => api.get('/flexible-products/search/query', { params: { query } }),
 };
 
 export default api;

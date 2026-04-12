@@ -1,56 +1,24 @@
-/**
- * SIMPLIFIED PRODUCT & INVENTORY CONTROLLER
- * 
- * Handles:
- * - Loading products and inventory
- * - Getting dropdown options
- * - Updating inventory
- */
-
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const { PRODUCTS, validateSelection } = require('../data/productDefinitions');
+const prisma = require('../utils/prismaClient');
+const { PRODUCTS } = require('../data/productDefinitions');
 
 // ============================================================================
 // GET PRODUCT DEFINITIONS & DROPDOWNS
 // ============================================================================
 
-/**
- * GET /api/products/definitions
- * Returns all fixed product definitions with specifications
- */
 exports.getProductDefinitions = async (req, res) => {
   try {
-    res.status(200).json({
-      success: true,
-      data: PRODUCTS
-    });
+    res.status(200).json({ success: true, data: PRODUCTS });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * GET /api/products/options/:productId
- * Returns GSM, Size, Color options for a specific product
- */
 exports.getProductOptions = async (req, res) => {
   try {
     const { productId } = req.params;
     const product = PRODUCTS[productId.toUpperCase()];
-
-    if (!product) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        gsmOptions: product.gsmOptions,
-        sizeOptions: product.sizeOptions,
-        colorOptions: product.colorOptions
-      }
-    });
+    if (!product) return res.status(404).json({ success: false, error: 'Product not found' });
+    res.status(200).json({ success: true, data: { gsmOptions: product.gsmOptions, sizeOptions: product.sizeOptions, colorOptions: product.colorOptions } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -62,84 +30,108 @@ exports.getProductOptions = async (req, res) => {
 
 /**
  * GET /api/inventory
- * Returns all inventory items with product details
- * Supports search params: ?search=value (searches across all product fields)
  */
 exports.getAllInventory = async (req, res) => {
   try {
-    const { search, limit = 100 } = req.query;
-    
-    let query = { isActive: true };
+    const { search, limit = 1000 } = req.query;
+    let whereClause = { isActive: true };
 
-    // If search param provided, build regex search across all product fields
     if (search && search.trim()) {
-      const searchRegex = { $regex: search.trim(), $options: 'i' };
-      
-      // First find matching variants
-      const variants = await require('../models/ProductVariant').find({
-        $or: [
-          { displayName: searchRegex },
-          { sku: searchRegex },
-          { size: searchRegex },
-          { color: searchRegex }
-        ]
+      const searchTerm = search.trim();
+      const variants = await prisma.productVariant.findMany({
+        where: {
+          OR: [
+            { displayName: { contains: searchTerm } },
+            { sku: { contains: searchTerm } },
+            { size: { contains: searchTerm } },
+            { color: { contains: searchTerm } }
+          ]
+        },
+        select: { id: true }
       });
-
-      const variantIds = variants.map(v => v._id);
-      query.variantId = { $in: variantIds };
+      whereClause.variantId = { in: variants.map(v => v.id) };
     }
 
-    const items = await require('../models/Inventory').find(query)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      })
-      .limit(parseInt(limit))
-      .sort({ updatedAt: -1 });
+    const items = await prisma.inventory.findMany({
+      where: whereClause,
+      include: {
+        variant: {
+          include: {
+            productMaster: true
+          }
+        }
+      },
+      take: parseInt(limit),
+      orderBy: { updatedAt: 'desc' }
+    });
 
-    // Transform data for frontend
-    const transformedItems = items.map(item => ({
-      _id: item._id,
-      quantity: item.quantity,
-      price: item.price,
-      minimumStockLevel: item.minimumStockLevel,
-      isActive: item.isActive,
-      variant: item.variantId,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt
-    }));
+    const transformedItems = items.map(item => {
+      const v = item.variant || {};
+      const pm = v.productMaster || {};
 
+      return {
+        _id: item.id,
+        id: item.id,
+        name: v.displayName || "Unknown Product",
+        quantity: item.quantity || 0,
+        price: item.price || v.price || 0,
+        minimumStockLevel: item.minimumStockLevel || 0,
+        isActive: item.isActive,
+        variantId: {
+          ...v,
+          _id: v.id,
+          productId: { ...pm, _id: pm.id }
+        },
+        variant: {
+          ...v,
+          _id: v.id,
+          productMaster: { ...pm, _id: pm.id },
+          productId: { ...pm, _id: pm.id }
+        },
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      };
+    });
+
+    console.log("📦 Billing Items fetched:", transformedItems.length);
     res.status(200).json({
       success: true,
       count: transformedItems.length,
       data: transformedItems
     });
-  } catch (err) {
-    console.error('Error fetching inventory:', err);
-    res.status(500).json({ success: false, error: err.message });
+
+  } catch (error) {
+    console.error("❌ Inventory Error:", error);
+    res.status(500).json({ success: false, error: error.message, data: [] });
   }
 };
 
 /**
  * GET /api/inventory/:inventoryId
- * Get specific inventory item
  */
 exports.getInventoryById = async (req, res) => {
   try {
-    const item = await Inventory.findById(req.params.inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
-    
-    if (!item) {
-      return res.status(404).json({ success: false, error: 'Inventory item not found' });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: item
+    const item = await prisma.inventory.findUnique({
+      where: { id: req.params.inventoryId },
+      include: { variant: { include: { productMaster: true } } }
     });
+    
+    if (!item) return res.status(404).json({ success: false, error: 'Not found' });
+
+    const v = item.variant || {};
+    const pm = v.productMaster || {};
+
+    const transformed = {
+      ...item,
+      _id: item.id,
+      variantId: {
+        ...v,
+        _id: v.id,
+        productId: { ...pm, _id: pm.id }
+      }
+    };
+
+    res.json({ success: true, data: transformed });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -147,41 +139,35 @@ exports.getInventoryById = async (req, res) => {
 
 /**
  * PUT /api/inventory/:inventoryId
- * Update inventory (quantity and price)
  */
 exports.updateInventory = async (req, res) => {
   try {
-    const { quantity, price } = req.body;
+    const { quantity, price, minimumStockLevel } = req.body;
+    const updateData = {};
+    if (quantity !== undefined) updateData.quantity = Math.max(0, parseInt(quantity));
+    if (price !== undefined) updateData.price = Math.max(0, parseFloat(price));
+    if (minimumStockLevel !== undefined) updateData.minimumStockLevel = parseInt(minimumStockLevel);
 
-    if (quantity === undefined && price === undefined) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Provide at least quantity or price to update' 
-      });
-    }
-
-    const updates = {};
-    if (quantity !== undefined) updates.quantity = Math.max(0, quantity);
-    if (price !== undefined) updates.price = Math.max(0, price);
-
-    const item = await Inventory.findByIdAndUpdate(
-      req.params.inventoryId,
-      updates,
-      { new: true }
-    ).populate({
-      path: 'variantId',
-      populate: { path: 'productId' }
+    const item = await prisma.inventory.update({
+      where: { id: req.params.inventoryId },
+      data: updateData,
+      include: { variant: { include: { productMaster: true } } }
     });
 
-    if (!item) {
-      return res.status(404).json({ success: false, error: 'Inventory item not found' });
-    }
+    const v = item.variant || {};
+    const pm = v.productMaster || {};
 
-    res.status(200).json({
-      success: true,
-      data: item,
-      message: 'Inventory updated successfully'
-    });
+    const transformed = {
+      ...item,
+      _id: item.id,
+      variantId: {
+        ...v,
+        _id: v.id,
+        productId: { ...pm, _id: pm.id }
+      }
+    };
+
+    res.json({ success: true, data: transformed });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -189,288 +175,127 @@ exports.updateInventory = async (req, res) => {
 
 /**
  * DELETE /api/inventory/:inventoryId
- * Delete inventory item (soft delete)
  */
 exports.deleteInventory = async (req, res) => {
   try {
-    const item = await Inventory.findByIdAndUpdate(
-      req.params.inventoryId,
-      { isActive: false },
-      { new: true }
-    );
-
-    if (!item) {
-      return res.status(404).json({ success: false, error: 'Inventory item not found' });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Inventory item deleted successfully'
+    await prisma.inventory.update({
+      where: { id: req.params.inventoryId },
+      data: { isActive: false }
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// ============================================================================
-// SEARCH & FILTERING
-// ============================================================================
-
-/**
- * GET /api/inventory/search
- * Search inventory by product specs
- * ?productName=Maplitho&gsm=80&size=9x6
- */
-exports.searchInventory = async (req, res) => {
-  try {
-    const { productName, gsm, size, color } = req.query;
-    
-    // Build product filter
-    const productFilter = { isActive: true };
-
-    if (productName) productFilter.productName = productName;
-    if (gsm && gsm !== 'null' && gsm !== '') productFilter.gsm = parseInt(gsm);
-    if (size && size !== 'null' && size !== '') productFilter.size = size;
-    if (color && color !== 'null' && color !== '') productFilter.color = color;
-
-    // Step 1: Find matching products
-    const matchingProducts = await Product.find(productFilter);
-    const productIds = matchingProducts.map(p => p._id);
-
-    console.log('🔍 Search filter:', productFilter);
-    console.log('   Found products:', productIds.length);
-
-    // Step 2: Find inventory items for these products
-    const inventoryFilter = { 
-      isActive: true,
-      productId: { $in: productIds }
-    };
-
-    const results = await Inventory.find(inventoryFilter)
-      .populate('productId')
-      .sort({ 'productId.productName': 1, 'productId.gsm': 1, 'productId.size': 1 });
-
-    console.log('   Found inventory items:', results.length);
-
-    res.status(200).json({
-      success: true,
-      count: results.length,
-      data: results
-    });
-  } catch (err) {
-    console.error('Search error:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-/**
- * GET /api/inventory/low-stock
- * Get low stock items (below minimumStockLevel)
- */
-exports.getLowStock = async (req, res) => {
-  try {
-    const items = await Inventory.find({
-      isActive: true,
-      $expr: { $lt: ['$quantity', '$minimumStockLevel'] }
-    })
-      .populate('productId')
-      .sort({ quantity: 1 });
-
-    res.status(200).json({
-      success: true,
-      count: items.length,
-      data: items
-    });
+    res.json({ success: true, message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
 /**
- * GET /api/inventory/product/:productName
- * Get all inventory for a specific product
- */
-exports.getByProduct = async (req, res) => {
-  try {
-    const { productName } = req.params;
-
-    const items = await Inventory.find({ isActive: true })
-      .populate({
-        path: 'productId',
-        match: { productName: productName }
-      });
-
-    const results = items.filter(item => item.productId !== null);
-
-    res.status(200).json({
-      success: true,
-      count: results.length,
-      data: results
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-// ============================================================================
-// BULK OPERATIONS
-// ============================================================================
-
-/**
- * POST /api/inventory/bulk-update
- * Update multiple inventory items at once
- * Body: { updates: [{ id, quantity, price }, ...] }
+ * BULK UPDATE
  */
 exports.bulkUpdateInventory = async (req, res) => {
   try {
     const { updates } = req.body;
-
-    if (!Array.isArray(updates)) {
-      return res.status(400).json({ success: false, error: 'updates must be an array' });
-    }
+    if (!Array.isArray(updates)) return res.status(400).json({ success: false, error: 'Array required' });
 
     const results = [];
-    for (const update of updates) {
-      const { id, ...data } = update;
-      const item = await Inventory.findByIdAndUpdate(
-        id,
-        data,
-        { new: true }
-      ).populate('productId');
-      if (item) results.push(item);
+    for (const up of updates) {
+      const id = up.id || up._id;
+      if (!id) continue;
+      const updated = await prisma.inventory.update({
+        where: { id },
+        data: {
+          quantity: up.quantity !== undefined ? parseInt(up.quantity) : undefined,
+          price: up.price !== undefined ? parseFloat(up.price) : undefined
+        }
+      });
+      results.push(updated);
     }
-
-    res.status(200).json({
-      success: true,
-      updated: results.length,
-      data: results
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+    res.json({ success: true, updated: results.length, data: results });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
-// ============================================================================
-// STOCK IN/OUT OPERATIONS
-// ============================================================================
+/**
+ * SEARCH / FILTER
+ */
+exports.searchInventory = async (req, res) => {
+  try {
+    const { productName, gsm, size, color } = req.query;
+    let variantWhere = { isActive: true };
+    if (productName) variantWhere.productMaster = { name: { contains: productName } };
+    if (gsm) variantWhere.gsm = parseInt(gsm);
+    if (size) variantWhere.size = size;
+    if (color) variantWhere.color = color;
+
+    const items = await prisma.inventory.findMany({
+      where: { isActive: true, variant: variantWhere },
+      include: { variant: { include: { productMaster: true } } }
+    });
+
+    res.json({ success: true, count: items.length, data: items.map(i => ({ ...i, _id: i.id })) });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+};
 
 /**
- * POST /api/inventory/:inventoryId/stock-in
- * Add quantity to inventory (stock in)
- * Body: { quantity: number, reason?: string }
+ * LOW STOCK
+ */
+exports.getLowStock = async (req, res) => {
+  try {
+    const items = await prisma.inventory.findMany({
+      where: { isActive: true },
+      include: { variant: { include: { productMaster: true } } }
+    });
+    const lowStock = items.filter(i => i.quantity < (i.minimumStockLevel || 50));
+    res.json({ success: true, count: lowStock.length, data: lowStock.map(i => ({ ...i, _id: i.id })) });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+};
+
+/**
+ * GET BY PRODUCT
+ */
+exports.getByProduct = async (req, res) => {
+  try {
+    const { productName } = req.params;
+    const items = await prisma.inventory.findMany({
+      where: { isActive: true, variant: { productMaster: { name: productName } } },
+      include: { variant: { include: { productMaster: true } } }
+    });
+    res.json({ success: true, count: items.length, data: items.map(i => ({ ...i, _id: i.id })) });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+};
+
+/**
+ * STOCK IN
  */
 exports.addStock = async (req, res) => {
   try {
     const { inventoryId } = req.params;
-    const { quantity, reason } = req.body;
-
-    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Quantity must be a positive number' 
-      });
-    }
-
-    const item = await Inventory.findById(inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
-
-    if (!item) {
-      return res.status(404).json({ success: false, error: 'Inventory item not found' });
-    }
-
-    // Add quantity
-    const addQty = parseInt(quantity);
-    const oldQuantity = item.quantity;
-    item.quantity += addQty;
-    
-    await item.save();
-
-    console.log(`✅ Stock added: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (+${addQty})`);
-
-    res.status(200).json({
-      success: true,
-      message: `Added ${addQty} units`,
-      data: item,
-      changeLog: {
-        action: 'STOCK_IN',
-        oldQuantity,
-        newQuantity: item.quantity,
-        change: addQty,
-        reason: reason || 'Manual stock addition',
-        timestamp: new Date()
-      }
+    const { quantity } = req.body;
+    const addQty = parseInt(quantity) || 0;
+    const updated = await prisma.inventory.update({
+      where: { id: inventoryId },
+      data: { quantity: { increment: addQty } },
+      include: { variant: { include: { productMaster: true } } }
     });
-  } catch (err) {
-    console.error('Error adding stock:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
+    res.json({ success: true, data: updated });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
 /**
- * POST /api/inventory/:inventoryId/stock-out
- * Reduce quantity from inventory (stock out)
- * Body: { quantity: number, reason?: string }
+ * STOCK OUT
  */
 exports.reduceStock = async (req, res) => {
   try {
     const { inventoryId } = req.params;
-    const { quantity, reason } = req.body;
-
-    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Quantity must be a positive number' 
-      });
-    }
-
-    const item = await Inventory.findById(inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
-
-    if (!item) {
-      return res.status(404).json({ success: false, error: 'Inventory item not found' });
-    }
-
-    const reduceQty = parseInt(quantity);
-
-    // Validate enough stock available
-    if (item.quantity < reduceQty) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Not enough stock. Available: ${item.quantity}, Requested: ${reduceQty}` 
-      });
-    }
-
-    // Reduce quantity
-    const oldQuantity = item.quantity;
-    item.quantity -= reduceQty;
-    
-    await item.save();
-
-    console.log(`✅ Stock reduced: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (-${reduceQty})`);
-
-    res.status(200).json({
-      success: true,
-      message: `Reduced ${reduceQty} units`,
-      data: item,
-      changeLog: {
-        action: 'STOCK_OUT',
-        oldQuantity,
-        newQuantity: item.quantity,
-        change: -reduceQty,
-        reason: reason || 'Manual stock reduction',
-        timestamp: new Date()
-      }
+    const { quantity } = req.body;
+    const subQty = parseInt(quantity) || 0;
+    const item = await prisma.inventory.findUnique({ where: { id: inventoryId } });
+    if (item.quantity < subQty) return res.status(400).json({ success: false, error: 'Insufficient stock' });
+    const updated = await prisma.inventory.update({
+      where: { id: inventoryId },
+      data: { quantity: { decrement: subQty } },
+      include: { variant: { include: { productMaster: true } } }
     });
-  } catch (err) {
-    console.error('Error reducing stock:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
+    res.json({ success: true, data: updated });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
 module.exports = exports;

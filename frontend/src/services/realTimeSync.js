@@ -1,7 +1,7 @@
 /**
  * REAL-TIME SYNC SERVICE
- * Manages real-time data synchronization across all modules
- * Billing → Inventory → Sales History → Dashboard
+ * Implements a simple Event Emitter for frontend synchronization
+ * Tracks data changes via polling and triggers UI updates
  */
 
 import { saleService } from './api';
@@ -11,141 +11,115 @@ class RealTimeSyncService {
     this.listeners = {};
     this.isPolling = false;
     this.lastSaleId = null;
-    this.pollInterval = 5000; // 5 seconds
+    this.pollInterval = 5000;
+    this.errorCount = 0;
+    this.maxErrorThreshold = 3;
+    this.pollTimeout = null;
   }
 
   /**
-   * Register a listener for real-time updates
-   * @param {string} eventType - 'sale', 'inventory', 'dashboard', 'reports'
-   * @param {Function} callback - Function to call when data updates
+   * 🎯 TASK 1: IMPLEMENT EVENT SYSTEM
    */
-  subscribe(eventType, callback) {
-    if (!this.listeners[eventType]) {
-      this.listeners[eventType] = [];
+  on(event, callback) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
     }
-    this.listeners[eventType].push(callback);
-
-    // Return unsubscribe function
-    return () => {
-      this.listeners[eventType] = this.listeners[eventType].filter(cb => cb !== callback);
-    };
+    this.listeners[event].push(callback);
+    
+    // Return unsubscribe function for cleanup
+    return () => this.off(event, callback);
   }
 
-  /**
-   * Alias for subscribe - EventEmitter-style .on() method
-   */
-  on(eventType, callback) {
-    return this.subscribe(eventType, callback);
+  // Alias for legacy code
+  subscribe(event, callback) {
+    return this.on(event, callback);
   }
 
-  /**
-   * Alias for unsubscribe - EventEmitter-style .off() method
-   */
-  off(eventType, callback) {
-    if (!this.listeners[eventType]) return;
-    this.listeners[eventType] = this.listeners[eventType].filter(cb => cb !== callback);
+  off(event, callback) {
+    if (!this.listeners[event]) return;
+    this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
   }
 
-  /**
-   * Emit updates to all listeners
-   * @param {string} eventType - Type of event
-   * @param {*} data - Data to pass to listeners
-   */
-  emit(eventType, data) {
-    if (!this.listeners[eventType]) return;
-    this.listeners[eventType].forEach(callback => {
+  emit(event, data) {
+    if (!this.listeners[event]) return;
+    this.listeners[event].forEach(callback => {
       try {
         callback(data);
       } catch (err) {
-        console.error(`Error in listener for ${eventType}:`, err);
+        console.error(`❌ Error in real-time listener [${event}]:`, err);
       }
     });
   }
 
   /**
-   * Start polling for new sales
+   * START POLLING
    */
-  startPolling() {
+  async startPolling() {
     if (this.isPolling) return;
     this.isPolling = true;
-
-    const poll = async () => {
-      try {
-        const res = await saleService.getAll({ limit: 1 });
-        const sales = res.data?.data || res.data || [];
-        const latestSale = sales[0];
-
-        if (latestSale && latestSale._id !== this.lastSaleId) {
-          this.lastSaleId = latestSale._id;
-          
-          // Emit updates to all listeners
-          this.emit('sale', latestSale);
-          this.emit('inventory', { type: 'stock_updated', sale: latestSale });
-          this.emit('dashboard', { type: 'refresh' });
-          this.emit('reports', { type: 'new_sale', sale: latestSale });
-
-          console.log('🔄 Real-time sync triggered for new sale:', latestSale._id);
-        }
-      } catch (err) {
-        console.error('Error in polling:', err);
-      }
-
-      if (this.isPolling) {
-        setTimeout(poll, this.pollInterval);
-      }
-    };
-
-    poll();
+    this.runPoll();
   }
 
-  /**
-   * Stop polling
-   */
-  stopPolling() {
-    this.isPolling = false;
-  }
+  async runPoll() {
+    if (!this.isPolling) return;
 
-  /**
-   * Trigger immediate update
-   * @param {string} eventType - Type of event
-   */
-  async triggerUpdate(eventType) {
     try {
-      if (eventType === 'dashboard' || eventType === 'reports') {
-        this.emit(eventType, { type: 'refresh' });
+      const res = await saleService.getAll({ limit: 1 });
+      const sales = res.data?.data || res.data || [];
+      const latestSale = sales[0];
+
+      // Reset error count on success
+      this.errorCount = 0;
+      this.pollInterval = 5000; 
+
+      if (latestSale && latestSale._id !== this.lastSaleId) {
+        this.lastSaleId = latestSale._id;
+        
+        // 🎯 TASK 2: EMIT UPDATE EVENT
+        this.emit('update', latestSale);
+        
+        // Specific events for modules
+        this.emit('sale', latestSale);
+        this.emit('inventory', { type: 'stock_updated', sale: latestSale });
+        this.emit('dashboard', { type: 'refresh' });
+        
+        console.log('🔄 Real-time sync: Data change detected');
       }
     } catch (err) {
-      console.error(`Error triggering update for ${eventType}:`, err);
+      this.errorCount++;
+      // Exponential backoff
+      this.pollInterval = Math.min(this.pollInterval * 2, 60000); 
+      
+      if (this.errorCount >= this.maxErrorThreshold) {
+        this.pollInterval = 60000;
+      }
+    }
+
+    // Scheduling next poll
+    if (this.isPolling) {
+      this.pollTimeout = setTimeout(() => this.runPoll(), this.pollInterval);
     }
   }
 
   /**
-   * Get current polling status
+   * 🎯 TASK 3: ENSURE CLEANUP
    */
-  getStatus() {
-    return {
-      isPolling: this.isPolling,
-      pollInterval: this.pollInterval,
-      listeners: Object.keys(this.listeners).map(key => ({
-        type: key,
-        count: this.listeners[key].length
-      }))
-    };
+  stopPolling() {
+    this.isPolling = false;
+    if (this.pollTimeout) {
+      clearTimeout(this.pollTimeout);
+      this.pollTimeout = null;
+    }
+    console.log('🛑 Real-time polling stopped');
   }
 }
 
-// Export singleton instance
 export const realTimeSyncService = new RealTimeSyncService();
+export default realTimeSyncService;
 
-// Also export as default for easier imports
-export default new RealTimeSyncService();
-
-// Auto-start polling in production
+// Auto-initialization in browser
 if (typeof window !== 'undefined') {
   window.realTimeSync = realTimeSyncService;
-  // Start polling when app loads
-  document.addEventListener('DOMContentLoaded', () => {
-    realTimeSyncService.startPolling();
-    console.log('✅ Real-time sync service initialized');
-  });
+  // Delay startup to allow other services to initialize
+  setTimeout(() => realTimeSyncService.startPolling(), 3000);
 }

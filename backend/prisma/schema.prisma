@@ -1,0 +1,246 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("employee")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  phone     String?
+  address   String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sales     Sale[]
+}
+
+model Counter {
+  id  String @id
+  seq Int    @default(0)
+}
+
+model Sale {
+  id              String   @id @default(cuid())
+  billNumber      String   @unique
+  customerName    String
+  customerPhone   String?
+  customerGSTIN   String?
+  customerAddress String?
+  
+  // Strict Relation: Sales are tied to customers, but optional (nullable)
+  customerId      String?
+  customer        Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  subtotal        Float    @default(0)
+  cgstRate        Float    @default(9)
+  sgstRate        Float    @default(9)
+  cgst            Float    @default(0)
+  sgst            Float    @default(0)
+  igst            Float    @default(0)
+  roundOff        Float    @default(0)
+  grandTotal      Float
+  date            DateTime @default(now())
+  
+  items           SaleItem[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([customerName])
+  @@index([date(sort: Desc)])
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  
+  // Loose tracking: Keeps historical sales intact even if variant/product is deleted later
+  variantId   String?
+  productId   String?
+  productName String   @default("Product")
+  displayName String   @default("")
+  gsm         Float?
+  size        String?
+  color       String?
+  price       Float    @default(0)
+  quantity    Int      @default(0)
+  itemTotal   Float    @default(0)
+}
+
+model ProductMaster {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  materialType String?   // Maplitho, Buff, Kraft, Colour Covers, Cloth Covers, Vibuthi Covers (Optional)
+  hasGSM       Boolean  @default(true)
+  hasSize      Boolean  @default(true)
+  hasColor     Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  
+  variants     ProductVariant[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ProductVariant {
+  id              String        @id @default(cuid())
+  productId       String
+  productMaster   ProductMaster @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  size            String?
+  gsm             Int?
+  color           String?
+  price           Float         @default(0)
+  sku             String?       // Optional SKU for searching
+  displayName     String        // AUTO GENERATED: "Maplitho 80 gsm 9x6"
+  isActive        Boolean       @default(true)
+  
+  inventory       Inventory?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([productId, size, gsm, color])
+}
+
+model Inventory {
+  id                String   @id @default(cuid())
+  variantId         String   @unique
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  
+  quantity          Int      @default(0)
+  price             Float    @default(0)
+  minimumStockLevel Int      @default(50)
+  isActive          Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  productName  String
+  variantType  String
+  variantValue String
+  price        Float
+  stock        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([productName])
+  @@index([variantType])
+  @@index([productName, variantType, variantValue])
+}
+
+model SimpleInventoryItem {
+  id           String   @id @default(cuid())
+  productName  String
+  variantType  String
+  variantValue String
+  price        Float
+  stock        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([productName])
+  @@index([variantType])
+  @@index([productName, variantType, variantValue])
+}
+
+model StockTransaction {
+  id          String   @id @default(cuid())
+  
+  // Loose References: Emulate NoSQL. If an envelope/product is deleted, don't crash historic logs
+  variantId   String?
+  productId   String?
+  envelopeId  String?
+  reference   String?  
+  
+  type        String   
+  quantity    Int
+  reason      String   @default("")
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FlexibleProduct {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  description String?
+  
+  variants    FlexibleProductVariant[]
+  
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model FlexibleProductVariant {
+  id                String          @id @default(cuid())
+  
+  flexibleProductId String
+  product           FlexibleProduct @relation(fields: [flexibleProductId], references: [id], onDelete: Cascade)
+  
+  type              String          
+  value             String 
+  price             Float
+  stock             Int             @default(0)
+  unit              String          @default("pcs")
+  
+  created_at        DateTime        @default(now())
+}
+
+model Envelope {
+  id           String   @id @default(cuid())
+  size         String
+  materialType String
+  gsm          Float?
+  color        String?
+  price        Float    @default(0)
+  quantity     Int      @default(0)
+  isActive     Boolean  @default(true)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([size, materialType, gsm, color])
+}
+
+model PricingTier {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  description       String   @default("")
+  tierType          String   @default("volume")
+  minQuantity       Int      @default(0)
+  maxQuantity       Int?
+  customerType      String?
+  discountType      String   @default("percentage")
+  discountValue     Float    @default(0)
+  markup            Float    @default(0)
+  startDate         DateTime?
+  endDate           DateTime?
+  priority          Int      @default(100)
+  isActive          Boolean  @default(true)
+  appliedCount      Int      @default(0)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

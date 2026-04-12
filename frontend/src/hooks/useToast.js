@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 
 /**
@@ -82,14 +82,14 @@ export const useToast = () => {
     });
   }, []);
 
-  return {
+  return useMemo(() => ({
     success: showSuccess,
     error: showError,
     loading: showLoading,
     info: showInfo,
     warning: showWarning,
     dismiss: toast.dismiss
-  };
+  }), [showSuccess, showError, showLoading, showInfo, showWarning]);
 };
 
 export default useToast;

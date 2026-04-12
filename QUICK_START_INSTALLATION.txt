@@ -1,0 +1,79 @@
+# ⚡ QUICK START - Installation Summary
+
+## 🎯 FASTEST PATH (20-30 minutes)
+
+### STEP 1: Install Node.js
+- Download: https://nodejs.org/ (LTS version)
+- Install & add to PATH
+- Verify: `node --version`
+
+### STEP 2: Install MongoDB
+- Download: https://www.mongodb.com/try/download/community
+- Run MSI installer
+- **Check: "Install as Service"**
+- Verify: `mongod --version`
+
+### STEP 3: Extract Project
+- Unzip your `Inventory_management.zip`
+- Navigate into the folder: `cd Inventory_management`
+
+### STEP 4: Install Dependencies
+```bash
+npm run install-all
+```
+⏱️ Wait 3-5 minutes
+
+### STEP 5: Run Application
+```bash
+npm run dev:desktop
+```
+⏱️ Wait 15-20 seconds
+
+### ✅ SUCCESS
+- Electron window opens
+- Dashboard displays
+- Application ready!
+
+---
+
+## 🧪 TEST IT
+
+1. Go to "Inventory" → Add Product
+2. Go to "Customers" → Add Customer  
+3. Go to "Billing" → Create Invoice
+4. Close app and restart → Data persists ✅
+
+---
+
+## 📦 BUILD FOR SHARING (Optional)
+
+```bash
+npm run build       # Build React
+npm run dist        # Create installer
+```
+
+**Output in `dist/` folder:**
+- Windows: `Swamy-Envelope-Setup.exe`
+- macOS: `Swamy-Envelope.dmg`
+- Linux: `Swamy-Envelope.AppImage`
+
+---
+
+## ⚠️ IF ISSUES
+
+| Issue | Fix |
+|-------|-----|
+| "npm not found" | Reinstall Node.js, restart terminal |
+| "MongoDB not found" | Reinstall MongoDB, add to PATH, restart |
+| "Port already in use" | Close other apps using port 5000 |
+| "Blank window" | Press F12 to debug, restart app |
+
+---
+
+## 📖 DETAILED HELP
+
+Read: `00_INSTALLATION_STEPS.md` (full guide)
+
+---
+
+**That's it! Your Swamy Envelope Desktop App is ready to go! 🚀**

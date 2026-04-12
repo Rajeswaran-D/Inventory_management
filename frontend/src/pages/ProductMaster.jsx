@@ -1,35 +1,35 @@
-import React, { useState, useEffect, useCallback ,useRef} from 'react';
-import { Plus, Trash2, AlertCircle, RefreshCw, Edit2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Trash2, AlertCircle, RefreshCw, Edit2, ChevronDown, Package } from 'lucide-react';
 import { productService } from '../services/api';
 import useToast from '../hooks/useToast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { AddProductVariantModal } from '../components/ui/AddProductVariantModal';
 import { EditProductVariantModal } from '../components/ui/EditProductVariantModal';
 import { DeleteProductVariantModal } from '../components/ui/DeleteProductVariantModal';
+import { ProductMasterModal } from '../components/ui/ProductMasterModal';
 
-/**
- * PRODUCT MASTER PAGE
- * Manage product types and their configurations
- * Creates ProductVariant entries which auto-create Inventory
- */
 export const ProductMaster = () => {
-  const toast = useToast();
+  const { info: toastInfo, error: toastError } = useToast();
   const showProductsOnce = useRef(false);
+  
   // State
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showAddVariant, setShowAddVariant] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Modal states
+  const [showAddMaster, setShowAddMaster] = useState(false);
+  const [showEditMaster, setShowEditMaster] = useState(false);
+  const [showDeleteMasterConfirm, setShowDeleteMasterConfirm] = useState(false);
   
-  // New modal states for Edit & Delete
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedVariantForEdit, setSelectedVariantForEdit] = useState(null);
-  const [selectedVariantForDelete, setSelectedVariantForDelete] = useState(null);
+  const [showAddVariant, setShowAddVariant] = useState(false);
+  const [showEditVariant, setShowEditVariant] = useState(false);
+  const [showDeleteVariant, setShowDeleteVariant] = useState(false);
+  
+  // Selection states
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedVariant, setSelectedVariant] = useState(null);
 
   // Expandable sections state
   const [expandedProducts, setExpandedProducts] = useState(new Set());
@@ -43,272 +43,222 @@ export const ProductMaster = () => {
     });
   };
 
-  // Form state
-  const [variantForm, setVariantForm] = useState({
-    gsm: '',
-    size: '',
-    color: null
-  });
-
-
-
-  // Fetch products - NO DEPENDENCIES to prevent infinite loops
-  const fetchProducts = useCallback(async (showToast = false) => {
+  const fetchProducts = useCallback(async () => {
     try {
-      console.log('🔄 Fetching products...');
       setLoading(true);
       setError(null);
 
       const res = await productService.getAllProducts();
-      const productsData = Array.isArray(res.data) ? res.data : res.data?.data || [];
+      const productsData = res.data?.data || res.data || [];
 
-      // Get variants for each product
+      if (!Array.isArray(productsData)) {
+        throw new Error('Invalid product data received from server');
+      }
+
       const productsWithVariants = await Promise.all(
         productsData.map(async (product) => {
           try {
-            const variantRes = await productService.getAllVariants({ productId: product._id });
-            const variants = Array.isArray(variantRes.data) ? variantRes.data : variantRes.data?.data || [];
-            return { ...product, variants };
+            const variantRes = await productService.getVariants({ productId: product.id || product._id });
+            const variants = variantRes.data?.data || variantRes.data || [];
+            return { ...product, variants: Array.isArray(variants) ? variants : [] };
           } catch (err) {
-            console.warn(`Failed to load variants for ${product.name}:`, err);
             return { ...product, variants: [] };
           }
         })
       );
 
       setProducts(productsWithVariants);
-      // Only show toast on initial load OR if explicitly requested
       if (!showProductsOnce.current) {
-        toast.info(`✅ Loaded ${productsWithVariants.length} product types`);
+        toastInfo(`✅ Loaded ${productsWithVariants.length} product categories`);
         showProductsOnce.current = true;
       }
     } catch (err) {
-      console.error('Error fetching products:', err);
       const errorMsg = err?.response?.data?.message || err?.message || 'Failed to load products';
       setError(errorMsg);
-      toast.error(errorMsg);
+      toastError(errorMsg);
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toastInfo, toastError]);
 
-  // Initial load - ONLY on mount
   useEffect(() => {
-    console.log('🏭 Product Master component mounted - initial fetch');
-    fetchProducts(false);
-  }, []);
+    fetchProducts();
+  }, [fetchProducts]);
 
-  // Create variant
-  const handleCreateVariant = async () => {
-    if (!selectedProduct) {
-      toast.error('Please select a product');
-      return;
-    }
-
-    // Validation
-    if (selectedProduct.hasGSM && !variantForm.gsm) {
-      toast.error('GSM is required for this product');
-      return;
-    }
-    if (selectedProduct.hasSize && !variantForm.size) {
-      toast.error('Size is required for this product');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-
-      const payload = {
-        productId: selectedProduct._id,
-        gsm: selectedProduct.hasGSM ? parseInt(variantForm.gsm) : null,
-        size: selectedProduct.hasSize ? variantForm.size : null,
-        color: selectedProduct.hasColor ? variantForm.color : null
-      };
-
-      await productService.createVariant(payload);
-
-      toast.success('✅ Variant created successfully (Inventory auto-created)');
-      setShowAddVariant(false);
-      setVariantForm({ gsm: '', size: '', color: null });
-      // Refresh with toast enabled to confirm creation
-      await fetchProducts(true);
-    } catch (err) {
-      console.error('Error creating variant:', err);
-      const errorMsg = err?.response?.data?.message || 'Failed to create variant';
-      toast.error(errorMsg);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Delete variant
-  const handleDeleteVariant = async () => {
+  // DELETE PRODUCT MASTER
+  const handleDeleteProductMaster = async () => {
     if (!selectedProduct) return;
-
+    setIsSubmitting(true);
     try {
-      setIsSubmitting(true);
-      await productService.deleteVariant(selectedProduct._id);
-      toast.success('✅ Variant deleted');
-      setShowDeleteConfirm(false);
+      await productService.deleteProduct(selectedProduct.id || selectedProduct._id);
+      toast.success('Product category deleted successfully');
+      setShowDeleteMasterConfirm(false);
       setSelectedProduct(null);
-      // Refresh with toast enabled to confirm deletion
-      await fetchProducts(true);
+      fetchProducts();
     } catch (err) {
-      console.error('Error deleting variant:', err);
-      toast.error(err?.response?.data?.message || 'Failed to delete variant');
+      const msg = err.response?.data?.message || 'Failed to delete product category';
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
+    <div className="space-y-6 p-6 bg-gray-50/50 min-h-screen">
       {/* Header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
-          🏭 Product Master
-        </h1>
-        <p className="text-gray-600 mt-2 font-medium">
-          Manage product types and variants
-        </p>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <Package className="w-8 h-8 text-green-600" />
+            Product Master
+          </h1>
+          <p className="text-gray-500 mt-1 font-medium">Configure materials and product variants</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => fetchProducts()}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowAddMaster(true)}
+            className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold shadow-md transition-all active:scale-95"
+          >
+            <Plus className="w-5 h-5" />
+            Add Master
+          </button>
+        </div>
       </div>
 
-      {/* Error Display */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-red-700">{error}</p>
-          </div>
+          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+          <p className="text-sm text-red-700 font-medium">{error}</p>
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => fetchProducts(true)}
-          disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 active:scale-95"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading products...</p>
+      {loading && products.length === 0 ? (
+        <div className="bg-white rounded-lg p-12 text-center border border-gray-100 shadow-sm">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-500 font-medium">Synchronizing products...</p>
         </div>
-      )}
-
-      {/* Products List (Expandable) */}
-      {!loading && products.length > 0 && (
+      ) : (
         <div className="space-y-4">
           {products.map((product) => {
-            const isExpanded = expandedProducts.has(product._id);
+            const id = product.id || product._id;
+            const isExpanded = expandedProducts.has(id);
             return (
-              <div key={product._id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                {/* Product Header (Clickable) */}
-                <div 
-                  className="bg-gray-50 hover:bg-gray-100 p-4 cursor-pointer flex justify-between items-center transition-colors"
-                  onClick={() => toggleExpand(product._id)}
-                >
-                  <div className="flex items-center gap-4">
-                    <h3 className="text-lg font-bold text-gray-900">{product.name}</h3>
-                    <div className="flex gap-2 text-xs">
-                      {product.hasGSM && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">GSM</span>}
-                      {product.hasSize && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Size</span>}
-                      {product.hasColor && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">Color</span>}
+              <div key={id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all hover:shadow-md">
+                {/* Product Header */}
+                <div className="flex items-center justify-between p-5 hover:bg-gray-50/50">
+                  <div className="flex items-center gap-5 flex-1 cursor-pointer" onClick={() => toggleExpand(id)}>
+                    <div className="p-3 bg-green-50 rounded-lg">
+                       <Package className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-900">{product.name}</h3>
+                        <div className="flex gap-2 mt-1">
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Rule System: {product.materialType}</span>
+                        </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-500 font-medium text-sm">
-                      {product.variants?.length || 0} Variants
-                    </span>
-                    <button 
-                      className={`transform transition-transform text-gray-400 ${isExpanded ? 'rotate-180' : ''}`}
-                    >
-                      ▼
-                    </button>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="hidden md:flex gap-2">
+                       {product.hasGSM && <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold border border-blue-100 uppercase">GSM</span>}
+                       {product.hasSize && <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold border border-emerald-100 uppercase">Size</span>}
+                       {product.hasColor && <span className="px-3 py-1 bg-purple-50 text-purple-600 rounded-full text-xs font-bold border border-purple-100 uppercase">Color</span>}
+                    </div>
+
+                    <div className="flex items-center border-l pl-6 gap-2">
+                        <button 
+                          onClick={() => {
+                            setSelectedProduct(product);
+                            setShowEditMaster(true);
+                          }}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          title="Edit Master"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setSelectedProduct(product);
+                            setShowDeleteMasterConfirm(true);
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete Master"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => toggleExpand(id)}
+                          className={`p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-all ${isExpanded ? 'rotate-180' : ''}`}
+                        >
+                          <ChevronDown className="w-5 h-5" />
+                        </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Expanded Content */}
                 {isExpanded && (
-                  <div className="p-4 border-t border-gray-200">
-                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="text-sm font-semibold text-gray-700">Product Variants</h4>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProduct(product);
-                          setShowAddVariant(true);
-                          setVariantForm({ gsm: '', size: '', color: null });
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add Variant
-                      </button>
+                  <div className="bg-gray-50/30 p-6 border-t border-gray-100">
+                    <div className="flex justify-between items-center mb-5">
+                       <h4 className="font-bold text-gray-700 flex items-center gap-2 underline decoration-green-500/30 underline-offset-4">
+                         Variants & Inventory
+                         <span className="bg-gray-200 text-gray-600 text-[10px] px-2 py-0.5 rounded-full">{product.variants?.length || 0}</span>
+                       </h4>
+                       <button
+                         onClick={() => {
+                           setSelectedProduct(product);
+                           setShowAddVariant(true);
+                         }}
+                         className="flex items-center gap-2 px-4 py-2 bg-white border border-green-600 text-green-700 hover:bg-green-50 rounded-lg text-sm font-bold transition-all"
+                       >
+                         <Plus className="w-4 h-4" /> Add Variant
+                       </button>
                     </div>
 
                     {product.variants && product.variants.length > 0 ? (
-                      <div className="overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Specifications</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {product.variants.map(variant => (
-                              <tr key={variant._id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm font-medium text-gray-900">{variant.displayName}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900 font-semibold">₹{variant.price || 0}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedVariantForEdit(variant);
-                                        setSelectedProduct(product);
-                                        setShowEditModal(true);
-                                      }}
-                                      className="text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors"
-                                      title="Edit Variant"
-                                    >
-                                      <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedVariantForDelete(variant);
-                                        setSelectedProduct(product);
-                                        setShowDeleteModal(true);
-                                      }}
-                                      className="text-red-600 hover:bg-red-50 p-2 rounded transition-colors"
-                                      title="Delete Variant"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {product.variants.map(variant => (
+                          <div key={variant.id || variant._id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center group hover:border-green-300 transition-all">
+                             <div>
+                                <p className="font-bold text-gray-900 group-hover:text-green-700 transition-colors">{variant.displayName}</p>
+                                <p className="text-lg font-black text-gray-900 mt-1">₹{variant.price}</p>
+                             </div>
+                             <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => {
+                                    setSelectedVariant(variant);
+                                    setSelectedProduct(product);
+                                    setShowEditVariant(true);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedVariant(variant);
+                                    setSelectedProduct(product);
+                                    setShowDeleteVariant(true);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                             </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
-                      <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                        <p className="text-sm text-gray-500">No variants exist for this product yet.</p>
+                      <div className="text-center py-10 bg-white rounded-xl border-2 border-dashed border-gray-200">
+                        <Package className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-gray-400 text-sm font-medium">No variants defined for this material yet.</p>
                       </div>
                     )}
                   </div>
@@ -319,15 +269,18 @@ export const ProductMaster = () => {
         </div>
       )}
 
-      {/* Empty State */}
-      {!loading && products.length === 0 && !error && (
-        <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
-          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-600">No products found</p>
-        </div>
-      )}
+      {/* MODALS */}
+      <ProductMasterModal 
+        isOpen={showAddMaster || showEditMaster}
+        onClose={() => {
+          setShowAddMaster(false);
+          setShowEditMaster(false);
+          setSelectedProduct(null);
+        }}
+        product={showEditMaster ? selectedProduct : null}
+        onProductSaved={fetchProducts}
+      />
 
-      {/* Add Variant Modal */}
       <AddProductVariantModal
         isOpen={showAddVariant}
         onClose={() => {
@@ -335,57 +288,43 @@ export const ProductMaster = () => {
           setSelectedProduct(null);
         }}
         product={selectedProduct}
-        onProductAdded={() => fetchProducts(true)}
+        onProductAdded={fetchProducts}
       />
 
-      {/* Edit Variant Modal */}
       <EditProductVariantModal
-        isOpen={showEditModal}
+        isOpen={showEditVariant}
         onClose={() => {
-          setShowEditModal(false);
-          setSelectedVariantForEdit(null);
+          setShowEditVariant(false);
+          setSelectedVariant(null);
           setSelectedProduct(null);
         }}
-        variant={selectedVariantForEdit}
+        variant={selectedVariant}
         product={selectedProduct}
-        onVariantUpdated={() => {
-          setShowEditModal(false);
-          setSelectedVariantForEdit(null);
-          setSelectedProduct(null);
-          fetchProducts(false);
-        }}
+        onVariantUpdated={fetchProducts}
       />
 
-      {/* Delete Variant Modal */}
       <DeleteProductVariantModal
-        isOpen={showDeleteModal}
+        isOpen={showDeleteVariant}
         onClose={() => {
-          setShowDeleteModal(false);
-          setSelectedVariantForDelete(null);
+          setShowDeleteVariant(false);
+          setSelectedVariant(null);
           setSelectedProduct(null);
         }}
-        variant={selectedVariantForDelete}
+        variant={selectedVariant}
         product={selectedProduct}
-        onProductDeleted={() => {
-          setShowDeleteModal(false);
-          setSelectedVariantForDelete(null);
-          setSelectedProduct(null);
-          fetchProducts(false);
-        }}
+        onProductDeleted={fetchProducts}
       />
 
-      {/* Delete Confirmation (Legacy - can be removed) */}
       <ConfirmDialog
-        isOpen={showDeleteConfirm}
-        title="Delete Variant"
-        message={`Are you sure you want to delete "${selectedProduct?.displayName || 'this variant'}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        isOpen={showDeleteMasterConfirm}
+        title="Delete Product Category?"
+        message={`Are you sure you want to delete "${selectedProduct?.name}"? All variants must be deleted first.`}
+        confirmText="Confirm Delete"
         variant="danger"
         isLoading={isSubmitting}
-        onConfirm={handleDeleteVariant}
+        onConfirm={handleDeleteProductMaster}
         onCancel={() => {
-          setShowDeleteConfirm(false);
+          setShowDeleteMasterConfirm(false);
           setSelectedProduct(null);
         }}
       />

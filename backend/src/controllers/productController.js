@@ -1,584 +1,331 @@
-const mongoose = require('mongoose');
-const ProductMaster = require('../models/ProductMaster');
-const ProductVariant = require('../models/ProductVariant');
-const Inventory = require('../models/Inventory');
-
-// ===== PRODUCT MASTER ENDPOINTS =====
+const prisma = require('../utils/prismaClient');
+const { 
+  PRODUCT_RULES, 
+  generateDisplayName, 
+  validateVariantData,
+  PREDEFINED_SIZES,
+  COLOR_OPTIONS 
+} = require('../utils/productUtils');
 
 /**
- * GET /api/products/master
- * Get all products (with filtering)
+ * GET Product Masters
  */
 exports.getAllProducts = async (req, res, next) => {
   try {
-    console.log('📦 Fetching all products...');
-    const { isActive } = req.query;
-    
-    let query = {};
-    if (isActive !== undefined) {
-      query.isActive = isActive === 'true';
-    }
-
-    const products = await ProductMaster.find(query).sort({ name: 1 });
-    console.log(`✅ Found ${products.length} products`);
-    
-    res.status(200).json(products);
+    const products = await prisma.productMaster.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' }
+    });
+    res.status(200).json({ success: true, count: products.length, data: products || [] });
   } catch (err) {
-    console.error('❌ Error fetching products:', err.message);
-    next(err);
+    console.error("❌ Products Error:", err);
+    res.status(200).json({ success: false, data: [] });
   }
 };
 
 /**
- * GET /api/products/master/:id
- * Get product by ID with all variants
+ * GET Variants
+ * 🎯 FIXED PER USER REQUIREMENTS
+ */
+exports.getVariants = async (req, res) => {
+  try {
+    const { productId } = req.query;
+    if (!productId) return res.json({ success: true, data: [] });
+
+    const variants = await prisma.productVariant.findMany({
+      where: { productId: productId, isActive: true },
+      include: { productMaster: true, inventory: true }
+    });
+
+    const mapped = (variants || []).map(v => ({
+      ...v,
+      _id: v.id,
+      quantity: v.inventory?.quantity || 0,
+      price: v.inventory?.price || v.price || 0,
+      productId: { ...(v.productMaster || {}), _id: v.productMaster?.id }
+    }));
+
+    res.status(200).json({ success: true, count: mapped.length, data: mapped || [] });
+  } catch (error) {
+    console.error("❌ Variant Error:", error);
+    res.status(200).json({ success: false, data: [] });
+  }
+};
+
+/**
+ * GET Single Product with Variants
  */
 exports.getProductById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    console.log(`🔍 Fetching product: ${id}`);
-
-    const product = await ProductMaster.findById(id);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    // Get all variants for this product
-    const variants = await ProductVariant.find({ productId: id, isActive: true }).lean();
-    console.log(`  ✅ Found ${variants.length} variants`);
-
-    const variantIds = variants.map(v => v._id);
-    const inventories = await Inventory.find({ variantId: { $in: variantIds } }).lean();
-
-    const mergedVariants = variants.map(variant => {
-      const inv = inventories.find(i => i.variantId.toString() === variant._id.toString());
-      return {
-        ...variant,
-        price: inv ? inv.price : 0,
-        quantity: inv ? inv.quantity : 0,
-        inventoryId: inv ? inv._id : null
-      };
+    const product = await prisma.productMaster.findUnique({
+      where: { id },
+      include: {
+        variants: {
+          where: { isActive: true },
+          include: { inventory: true }
+        }
+      }
     });
-
-    res.status(200).json({
-      ...product.toObject(),
-      variants: mergedVariants
-    });
-  } catch (err) {
-    console.error('❌ Error fetching product:', err.message);
-    next(err);
-  }
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+    const mappedVariants = product.variants.map(v => ({
+      ...v,
+      _id: v.id,
+      quantity: v.inventory?.quantity || 0,
+      price: v.inventory?.price || v.price
+    }));
+    res.status(200).json({ success: true, data: { ...product, variants: mappedVariants } });
+  } catch (err) { next(err); }
 };
 
 /**
- * POST /api/products/master
- * Create new product master
+ * CREATE Product Master
  */
 exports.createProduct = async (req, res, next) => {
   try {
-    const { name, gsmOptions, sizeOptions, colorOptions, description, category } = req.body;
+    const { name, materialType } = req.body;
+    if (!name) return res.status(400).json({ message: 'Product Name is required' });
     
-    console.log(`📝 Creating new product: ${name}`);
-
-    // Validate required fields
-    if (!name) {
-      return res.status(400).json({ message: 'Product name is required' });
+    // Auto-resolve rules if material type is provided
+    let ruleData = { hasGSM: true, hasSize: true, hasColor: false };
+    if (materialType) {
+      const rules = PRODUCT_RULES[materialType];
+      if (rules) {
+        ruleData = { 
+          hasGSM: rules.hasGSM, 
+          hasSize: rules.hasSize, 
+          hasColor: rules.hasColor 
+        };
+      }
     }
 
-    // Check if product already exists
-    const existing = await ProductMaster.findOne({ name });
-    if (existing) {
-      return res.status(400).json({ message: `Product '${name}' already exists` });
-    }
-
-    const product = new ProductMaster({
-      name,
-      gsmOptions: gsmOptions || [],
-      sizeOptions: sizeOptions || [],
-      colorOptions: colorOptions || [],
-      description,
-      category
+    const product = await prisma.productMaster.create({
+      data: { 
+        name, 
+        materialType: materialType || null, 
+        ...ruleData 
+      }
     });
-
-    await product.save();
-    console.log(`✅ Product created: ${product._id}`);
-
-    res.status(201).json({
-      message: 'Product created successfully',
-      product
-    });
-  } catch (err) {
-    console.error('❌ Error creating product:', err.message);
-    next(err);
-  }
+    res.status(201).json({ success: true, data: product });
+  } catch (err) { next(err); }
 };
 
 /**
- * PUT /api/products/master/:id
- * Update product master (add GSM/Size/Color options)
+ * UPDATE Product Master
  */
 exports.updateProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { gsmOptions, sizeOptions, colorOptions } = req.body;
-
-    console.log(`✏️  Updating product: ${id}`);
-
-    const product = await ProductMaster.findById(id);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+    const { name, materialType } = req.body;
+    
+    // Auto-resolve rules if material type is changed
+    let updateData = { name, materialType };
+    if (materialType) {
+      const rules = PRODUCT_RULES[materialType];
+      if (rules) {
+        updateData.hasGSM = rules.hasGSM;
+        updateData.hasSize = rules.hasSize;
+        updateData.hasColor = rules.hasColor;
+      }
     }
 
-    // Update options (merge with existing to avoid duplicates)
-    if (gsmOptions && Array.isArray(gsmOptions)) {
-      product.gsmOptions = [...new Set([...product.gsmOptions, ...gsmOptions])].sort((a, b) => a - b);
-    }
-    if (sizeOptions && Array.isArray(sizeOptions)) {
-      product.sizeOptions = [...new Set([...product.sizeOptions, ...sizeOptions])];
-    }
-    if (colorOptions && Array.isArray(colorOptions)) {
-      product.colorOptions = [...new Set([...product.colorOptions, ...colorOptions])];
-    }
-
-    await product.save();
-    console.log(`✅ Product updated: ${id}`);
-
-    res.status(200).json({
-      message: 'Product updated successfully',
-      product
+    const product = await prisma.productMaster.update({
+      where: { id },
+      data: updateData
     });
-  } catch (err) {
-    console.error('❌ Error updating product:', err.message);
-    next(err);
-  }
+    
+    res.status(200).json({ success: true, data: product });
+  } catch (err) { next(err); }
 };
 
 /**
- * DELETE /api/products/master/:id
- * Soft delete product (mark inactive)
+ * DELETE Product Master
  */
 exports.deleteProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
-    console.log(`🗑️  Deleting product: ${id}`);
 
-    const product = await ProductMaster.findByIdAndUpdate(
-      id,
-      { isActive: false },
-      { new: true }
-    );
-
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    console.log(`✅ Product marked inactive: ${id}`);
-    res.status(200).json({ message: 'Product deleted successfully', product });
-  } catch (err) {
-    console.error('❌ Error deleting product:', err.message);
-    next(err);
-  }
-};
-
-// ===== PRODUCT VARIANT ENDPOINTS =====
-
-/**
- * GET /api/products/variants
- * Get all variants (with filtering)
- */
-exports.getAllVariants = async (req, res, next) => {
-  try {
-    const { productId, isActive } = req.query;
-    console.log('📋 Fetching variants...');
-
-    let query = {};
-    if (productId) query.productId = productId;
-    if (isActive !== undefined) query.isActive = isActive === 'true';
-
-    const variants = await ProductVariant.find(query)
-      .populate('productId')
-      .sort({ displayName: 1 })
-      .lean();
-
-    const variantIds = variants.map(v => v._id);
-    const inventories = await Inventory.find({ variantId: { $in: variantIds } }).lean();
-
-    const mergedVariants = variants.map(variant => {
-      const inv = inventories.find(i => i.variantId.toString() === variant._id.toString());
-      return {
-        ...variant,
-        price: inv ? inv.price : 0,
-        quantity: inv ? inv.quantity : 0,
-        inventoryId: inv ? inv._id : null
-      };
+    // 🎯 TASK 2: Prevent deletion if variants exist
+    const variantCount = await prisma.productVariant.count({
+      where: { productId: id, isActive: true }
     });
 
-    console.log(`✅ Found ${mergedVariants.length} variants`);
-    res.status(200).json(mergedVariants);
-  } catch (err) {
-    console.error('❌ Error fetching variants:', err.message);
-    next(err);
-  }
-};
-
-/**
- * GET /api/products/variants/:id
- * Get variant by ID
- */
-exports.getVariantById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    console.log(`🔍 Fetching variant: ${id}`);
-
-    const variant = await ProductVariant.findById(id).populate('productId');
-    if (!variant) {
-      return res.status(404).json({ message: 'Variant not found' });
+    if (variantCount > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot delete product. It has ${variantCount} active variants. Delete variants first.` 
+      });
     }
 
-    console.log(`✅ Found variant: ${variant.displayName}`);
-    res.status(200).json(variant);
-  } catch (err) {
-    console.error('❌ Error fetching variant:', err.message);
-    next(err);
-  }
+    await prisma.productMaster.update({
+      where: { id },
+      data: { isActive: false }
+    });
+
+    res.status(200).json({ success: true, message: 'Product Master deleted successfully' });
+  } catch (err) { next(err); }
 };
 
 /**
- * POST /api/products/variants
- * Create new product variant
- * CRITICAL: Auto-creates corresponding Inventory entry
- * NOTE: Transactions removed (requires MongoDB replica set)
+ * CREATE Variant
  */
 exports.createVariant = async (req, res, next) => {
   try {
-    const { productId, productName, gsm, size, color, isManualProduct, price } = req.body;
-    
-    console.log(`📝 Creating variant: ${productName || productId}`);
+    const { productId, size, gsm, color, price } = req.body;
+    const product = await prisma.productMaster.findUnique({ where: { id: productId } });
+    if (!product) return res.status(404).json({ message: 'Product Master not found' });
+    const displayName = generateDisplayName(product.name, size, gsm, color);
+    const result = await prisma.$transaction(async (tx) => {
+      const variant = await tx.productVariant.create({
+        data: { productId, size: size || null, gsm: gsm ? Number(gsm) : null, color: color || null, price: parseFloat(price) || 0, displayName }
+      });
+      await tx.inventory.create({ data: { variantId: variant.id, quantity: 0, price: parseFloat(price) || 0 } });
+      return variant;
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) { next(err); }
+};
 
-    let product;
-    let useProductId = productId;
+/**
+ * UNIFIED CREATE FULL PRODUCT (New Category + Variant OR Existing + Variant)
+ */
+exports.createFullProduct = async (req, res, next) => {
+  try {
+    const { 
+      productId, 
+      name, 
+      materialType, 
+      attributes, 
+      variant, 
+      price 
+    } = req.body;
 
-    // Handle manual product entry
-    if (isManualProduct && !productId) {
-      console.log(`📌 Manual product entry: ${productName}`);
-      
-      // Check if this manual product name already exists
-      product = await ProductMaster.findOne({ name: productName });
-      
-      if (!product) {
-        // Create new product master on the fly for manual entry
-        product = new ProductMaster({
-          name: productName,
-          hasGSM: !!gsm,
-          hasSize: !!size,
-          hasColor: !!color,
-          isManualProduct: true
+    const result = await prisma.$transaction(async (tx) => {
+      let activeProductMaster;
+
+      if (productId) {
+        // Mode 1: Use Existing
+        activeProductMaster = await tx.productMaster.findUnique({ where: { id: productId } });
+        if (!activeProductMaster) throw new Error('Product Master not found');
+      } else {
+        // Mode 2: Create New
+        if (!name) throw new Error('Product Name is required for new products');
+        
+        activeProductMaster = await tx.productMaster.create({
+          data: {
+            name,
+            materialType: materialType || null,
+            hasGSM: !!attributes?.gsm,
+            hasSize: !!attributes?.size,
+            hasColor: !!attributes?.color,
+            isActive: true
+          }
         });
-        await product.save();
-        console.log(`✅ Manual product created: ${product._id}`);
       }
-      useProductId = product._id;
-    } else {
-      // Validate product exists for standard entry
-      product = await ProductMaster.findById(productId);
-      if (!product) {
-        return res.status(400).json({ message: 'Invalid product ID' });
-      }
-    }
 
-    // Validate required fields based on product type
-    if (product.hasGSM && !gsm) {
-      return res.status(400).json({ message: `GSM is required for ${product.name}` });
-    }
-    if (product.hasSize && !size) {
-      return res.status(400).json({ message: `Size is required for ${product.name}` });
-    }
+      // 2. Generate Display Name
+      const displayName = generateDisplayName(
+        activeProductMaster.name, 
+        variant?.size, 
+        variant?.gsm, 
+        variant?.color
+      );
 
-    // Check for duplicate variant
-    let duplicateQuery = { productId: useProductId };
-    if (product.hasGSM) duplicateQuery.gsm = gsm;
-    if (product.hasSize) duplicateQuery.size = size;
-    if (product.hasColor) duplicateQuery.color = color || null;
+      // 3. Create Variant
+      const newVariant = await tx.productVariant.create({
+        data: {
+          productId: activeProductMaster.id,
+          size: variant?.size || null,
+          gsm: variant?.gsm ? Number(variant.gsm) : null,
+          color: variant?.color || null,
+          price: parseFloat(price) || 0,
+          displayName,
+          isActive: true
+        }
+      });
 
-    const existing = await ProductVariant.findOne(duplicateQuery);
-    if (existing) {
-      return res.status(400).json({ message: 'This variant already exists' });
-    }
+      // 4. Create Inventory record
+      await tx.inventory.create({
+        data: {
+          variantId: newVariant.id,
+          quantity: 0,
+          price: parseFloat(price) || 0
+        }
+      });
 
-    // Create variant
-    const variant = new ProductVariant({
-      productId: useProductId,
-      gsm: product.hasGSM ? gsm : null,
-      size: product.hasSize ? size : null,
-      color: product.hasColor ? color : null,
-      hasSize: product.hasSize,
-      hasGSM: product.hasGSM
+      return { productMaster: activeProductMaster, variant: newVariant };
     });
 
-    await variant.save();
-    console.log(`✅ Variant created: ${variant._id} (${variant.displayName})`);
-
-    // AUTO-CREATE corresponding Inventory entry
-    const inventory = new Inventory({
-      variantId: variant._id,
-      productName: product.name,
-      quantity: 0,
-      price: price !== undefined ? parseFloat(price) : 0,
-      minimumStockLevel: 50
-    });
-
-    await inventory.save();
-    console.log(`✅ Inventory auto-created: ${inventory._id} for variant ${variant._id}`);
-
-    res.status(201).json({
-      message: 'Variant and Inventory created successfully',
-      variant: {...variant.toObject(), inventoryId: inventory._id}
+    res.status(201).json({ 
+      success: true, 
+      message: productId ? 'Variant added successfully' : 'Product and variant created successfully',
+      data: result 
     });
   } catch (err) {
-    console.error('❌ Error creating variant:', err.message);
-    next(err);
+    console.error("❌ createFullProduct error:", err);
+    res.status(400).json({ success: false, message: err.message });
   }
 };
 
 /**
- * PUT /api/products/variants/:id
- * Update existing product variant
- * CRITICAL: Updates variantData and corresponding inventory price
+ * GET All Variants
+ */
+exports.getAllVariants = async (req, res, next) => {
+  try {
+    const variants = await prisma.productVariant.findMany({
+      where: { isActive: true },
+      include: { productMaster: true, inventory: true },
+      orderBy: { displayName: 'asc' }
+    });
+    const mapped = variants.map(v => ({
+      ...v,
+      _id: v.id,
+      quantity: v.inventory?.quantity || 0,
+      price: v.inventory?.price || v.price,
+      productId: { ...(v.productMaster || {}), _id: v.productMaster?.id }
+    }));
+    res.status(200).json({ success: true, count: mapped.length, data: mapped || [] });
+  } catch (err) { next(err); }
+};
+
+/**
+ * UPDATE Variant
  */
 exports.updateVariant = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { gsm, size, color, price } = req.body;
-
-    console.log(`✏️  Updating variant: ${id}`);
-
-    // Find variant
-    const variant = await ProductVariant.findById(id);
-    if (!variant) {
-      return res.status(404).json({ message: 'Variant not found' });
-    }
-
-    // Get product master to check constraints
-    const product = await ProductMaster.findById(variant.productId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product master not found' });
-    }
-
-    // Check for duplicate (if size/gsm/color changed)
-    const updates = {};
-    if (gsm !== undefined && product.hasGSM) updates.gsm = gsm;
-    if (size !== undefined && product.hasSize) updates.size = size;
-    if (color !== undefined && product.hasColor) updates.color = color;
-
-    if (Object.keys(updates).length > 0) {
-      const duplicateQuery = { 
-        productId: variant.productId, 
-        _id: { $ne: id }, // Exclude current variant
-        ...updates 
-      };
-      
-      const existing = await ProductVariant.findOne(duplicateQuery);
-      if (existing) {
-        return res.status(400).json({ message: 'Another variant with these specs already exists' });
-      }
-    }
-
-    // Update variant
-    Object.assign(variant, updates);
-    await variant.save();
-
-    console.log(`  ✅ Variant updated: ${variant.displayName}`);
-
-    // Update inventory price if provided
-    if (price !== undefined && price >= 0) {
-      const inventory = await Inventory.findOneAndUpdate(
-        { variantId: id },
-        { price: parseFloat(price) },
-        { new: true }
-      );
-      console.log(`  ✅ Inventory price updated to ₹${price}`);
-    }
-
-    res.status(200).json({
-      message: 'Variant updated successfully',
-      variant
+    const variant = await prisma.productVariant.findUnique({ where: { id: req.params.id }, include: { productMaster: true } });
+    if (!variant) return res.status(404).json({ message: 'Variant not found' });
+    const { size, gsm, color, price } = req.body;
+    const displayName = generateDisplayName(variant.productMaster.name, size ?? variant.size, gsm ? Number(gsm) : variant.gsm, color ?? variant.color);
+    const updated = await prisma.productVariant.update({
+      where: { id: req.params.id },
+      data: { size, gsm: gsm ? Number(gsm) : undefined, color, price: price ? parseFloat(price) : undefined, displayName }
     });
-  } catch (err) {
-    console.error('❌ Error updating variant:', err.message);
-    next(err);
-  }
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) { next(err); }
 };
 
-/**
- * DELETE /api/products/variants/:id
- * Delete variant AND corresponding inventory entry
- * CRITICAL: Also deletes if ProductMaster has no more variants
- */
-exports.deleteVariant = async (req, res, next) => {
+exports.getProductConfiguration = async (req, res) => res.status(200).json(PRODUCT_RULES);
+exports.getMaterialOptions = async (req, res) => res.status(200).json(Object.keys(PRODUCT_RULES));
+exports.getGSMOptions = async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log(`🗑️  Deleting variant: ${id}`);
+    const product = await prisma.productMaster.findUnique({ where: { id: req.query.productId } });
+    res.status(200).json(PRODUCT_RULES[product?.materialType]?.gsmOptions || []);
+  } catch (err) { res.json([]); }
+};
+exports.getSizeOptions = async (req, res) => res.json(PREDEFINED_SIZES);
+exports.getColorOptions = async (req, res) => res.json(COLOR_OPTIONS);
 
-    // Find variant
-    const variant = await ProductVariant.findById(id);
-    if (!variant) {
-      return res.status(404).json({ message: 'Variant not found' });
-    }
-
-    // Delete inventory entry
-    const inventory = await Inventory.findOneAndDelete({ variantId: id });
-    console.log(`  ✅ Inventory deleted: ${inventory?._id || 'N/A'}`);
-
-    // Delete variant
-    await ProductVariant.findByIdAndDelete(id);
-    console.log(`  ✅ Variant deleted: ${id}`);
-
-    // Check if product master has any more active variants
-    const remainingVariants = await ProductVariant.countDocuments({
-      productId: variant.productId,
-      isActive: true
-    });
-
-    console.log(`  📊 Remaining active variants for product: ${remainingVariants}`);
-
-    res.status(200).json({
-      message: 'Variant and Inventory deleted successfully',
-      variant,
-      inventoryDeleted: !!inventory,
-      remainingVariants
-    });
-  } catch (err) {
-    console.error('❌ Error deleting variant:', err.message);
-    next(err);
-  }
+exports.getVariantById = async (req, res) => {
+  try {
+    const variant = await prisma.productVariant.findUnique({ where: { id: req.params.id }, include: { productMaster: true, inventory: true } });
+    res.status(200).json({ success: true, data: { ...variant, _id: variant?.id } });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };
 
-// ===== DROPDOWN DATA ENDPOINTS (for dynamic UI) =====
-
-/**
- * GET /api/products/dropdowns/materials
- * Get all product names for material dropdown
- */
-exports.getMaterialOptions = async (req, res, next) => {
+exports.deleteVariant = async (req, res) => {
   try {
-    console.log('📊 Fetching material options...');
-    
-    const products = await ProductMaster.find({ isActive: true }).select('name');
-    const materials = products.map(p => p.name);
-    
-    console.log(`✅ Found ${materials.length} materials`);
-    res.status(200).json(materials);
-  } catch (err) {
-    console.error('❌ Error fetching materials:', err.message);
-    next(err);
-  }
-};
-
-/**
- * GET /api/products/dropdowns/gsm?productId=:id
- * Get GSM options for a product
- */
-exports.getGSMOptions = async (req, res, next) => {
-  try {
-    const { productId } = req.query;
-    console.log(`📊 Fetching GSM options for product: ${productId}`);
-
-    const product = await ProductMaster.findById(productId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    if (!product.hasGSM) {
-      return res.status(200).json([]);
-    }
-
-    console.log(`✅ Found ${product.gsmOptions.length} GSM options`);
-    res.status(200).json(product.gsmOptions);
-  } catch (err) {
-    console.error('❌ Error fetching GSM options:', err.message);
-    next(err);
-  }
-};
-
-/**
- * GET /api/products/dropdowns/sizes?productId=:id
- * Get size options for a product
- */
-exports.getSizeOptions = async (req, res, next) => {
-  try {
-    const { productId } = req.query;
-    console.log(`📊 Fetching size options for product: ${productId}`);
-
-    const product = await ProductMaster.findById(productId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    if (!product.hasSize) {
-      return res.status(200).json([]);
-    }
-
-    console.log(`✅ Found ${product.sizeOptions.length} size options`);
-    res.status(200).json(product.sizeOptions);
-  } catch (err) {
-    console.error('❌ Error fetching size options:', err.message);
-    next(err);
-  }
-};
-
-/**
- * GET /api/products/dropdowns/colors?productId=:id
- * Get color options for a product
- */
-exports.getColorOptions = async (req, res, next) => {
-  try {
-    const { productId } = req.query;
-    console.log(`📊 Fetching color options for product: ${productId}`);
-
-    const product = await ProductMaster.findById(productId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-
-    if (!product.hasColor) {
-      return res.status(200).json([]);
-    }
-
-    console.log(`✅ Found ${product.colorOptions.length} color options`);
-    res.status(200).json(product.colorOptions);
-  } catch (err) {
-    console.error('❌ Error fetching color options:', err.message);
-    next(err);
-  }
-};
-
-/**
- * GET /api/products/config
- * Get product configuration (field requirements for all products)
- * Used by frontend to determine conditional rendering
- */
-exports.getProductConfiguration = async (req, res, next) => {
-  try {
-    console.log('🔧 Fetching product configuration...');
-
-    const products = await ProductMaster.find({ isActive: true });
-    
-    const config = {};
-    products.forEach(product => {
-      config[product.name] = {
-        hasGSM: product.hasGSM,
-        hasSize: product.hasSize,
-        hasColor: product.hasColor,
-        gsmOptions: product.gsmOptions,
-        sizeOptions: product.sizeOptions,
-        colorOptions: product.colorOptions
-      };
-    });
-
-    console.log(`✅ Configuration fetched for ${products.length} products`);
-    res.status(200).json(config);
-  } catch (err) {
-    console.error('❌ Error fetching configuration:', err.message);
-    next(err);
-  }
+    await prisma.productVariant.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.status(200).json({ success: true, message: 'Deactivated' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 };

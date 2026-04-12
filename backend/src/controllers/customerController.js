@@ -1,64 +1,76 @@
-const Customer = require('../models/Customer');
+const prisma = require('../utils/prismaClient'); // Use Singleton!
 
-// GET all customers
 exports.getAllCustomers = async (req, res, next) => {
   try {
     const { search } = req.query;
-    let query = {};
+    
+    // Convert Mongoose $or cleanly to Prisma OR
+    let whereClause = {};
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
-      ];
+      whereClause = {
+        OR: [
+          { name: { contains: search } },
+          { phone: { contains: search } }
+        ]
+      };
     }
-    const customers = await Customer.find(query).sort({ name: 1 });
+    
+    const customers = await prisma.customer.findMany({
+      where: whereClause,
+      orderBy: { name: 'asc' }
+    });
+    
+    // Payload naturally contains `_id` strings mapping identically to UI
     res.status(200).json(customers);
   } catch (err) {
     next(err);
   }
 };
 
-// POST check if customer exists or create new
 exports.getOrCreateCustomer = async (req, res, next) => {
   try {
     const { name, phone, address, email } = req.body;
-    console.log('👤 Getting or creating customer:', { name, phone });
+    let customer = null;
     
-    let customer;
-    
-    // If phone is provided and not a timestamp-generated one, try to find by phone
+    // Replaces findOne()
     if (phone && !phone.includes('-')) {
-      customer = await Customer.findOne({ phone });
+      customer = await prisma.customer.findFirst({
+        where: { phone: phone }
+      });
     }
     
     if (!customer) {
-      console.log('  ℹ️  Creating new customer...');
-      customer = new Customer({ name, phone, address, email });
-      await customer.save();
-      console.log('  ✅ Customer created:', customer._id);
+      // Replaces new Model() + .save()
+      customer = await prisma.customer.create({
+        data: { name, phone, address, email }
+      });
     } else {
-      console.log('  ✓ Customer found:', customer._id);
-      // Update details if provided
-      if (name) customer.name = name;
-      if (address) customer.address = address;
-      if (email) customer.email = email;
-      await customer.save();
-      console.log('  ✅ Customer updated');
+      // Update logic replaces .save()
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: { 
+          name: name || undefined, 
+          address: address || undefined, 
+          email: email || undefined 
+        }
+      });
     }
     
-    console.log('  Returning customer:', { _id: customer._id, name: customer.name });
     res.status(200).json(customer);
   } catch (err) {
-    console.error('❌ Error in getOrCreateCustomer:', err.message);
     next(err);
   }
 };
 
-// GET a single customer
 exports.getCustomerById = async (req, res, next) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    // Replaces findById(). Zero parseInt() needed because CUID strings.
+    const customer = await prisma.customer.findUnique({
+      where: { id: req.params.id }
+    });
+    
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    
     res.status(200).json(customer);
   } catch (err) {
     next(err);
