@@ -36,7 +36,7 @@ async function seedProductsAndVariants() {
             id, name, has_gsm, has_size, has_color, description, category,
             gsm_options, size_options, color_options, is_active, is_manual_product
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, false)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)
         `,
         [
           productId,
@@ -157,7 +157,7 @@ async function seedPricingTiers() {
 
 async function autoSeed() {
   try {
-    const productCount = await query('SELECT COUNT(*)::int AS count FROM product_masters');
+    const productCount = await query('SELECT COUNT(*) AS count FROM product_masters');
     if (productCount.rows[0].count > 0) {
       console.log('Database already seeded, skipping auto-seed');
       return;

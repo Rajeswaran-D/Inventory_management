@@ -1,6 +1,6 @@
 const ExcelJS = require('exceljs');
 
-const { query, withTransaction } = require('../lib/db');
+const { run, get, all, withTransaction } = require('../lib/db');
 const { createId } = require('../lib/ids');
 const { getInventoryItems, getSales, getSaleCount } = require('../lib/store');
 
@@ -26,7 +26,7 @@ async function findInventoryForItem(client, item) {
       return null;
     }
 
-    const result = await query(
+    const result = await get(
       `
       SELECT 
         i.id,
@@ -34,14 +34,14 @@ async function findInventoryForItem(client, item) {
         i.price,
         i.variant_id
       FROM inventory i
-      WHERE i.variant_id = $1
+      WHERE i.variant_id = ?
       LIMIT 1
       `,
       [item.variantId],
       client
     );
 
-    return result.rows[0] || null;
+    return result || null;
   } catch (err) {
     console.error("❌ Inventory Error:", err.message);
     return null;
@@ -68,15 +68,15 @@ exports.createSale = async (req, res) => {
     const saleId = createId();
 
     // Generate sequential ascending bill number
-    const countRes = await query("SELECT COUNT(*) FROM sales");
-    let seq = parseInt(countRes.rows[0].count, 10) + 1;
+    const countRes = await get("SELECT COUNT(*) AS count FROM sales");
+    let seq = parseInt(countRes.count, 10) + 1;
     let billNumber = `BILL-${seq.toString().padStart(4, '0')}`;
     
     // Guarantee uniqueness
     let isUnique = false;
     while (!isUnique) {
-      const check = await query("SELECT id FROM sales WHERE bill_number = $1 LIMIT 1", [billNumber]);
-      if (check.rowCount === 0) {
+      const check = await get("SELECT id FROM sales WHERE bill_number = ? LIMIT 1", [billNumber]);
+      if (!check) {
         isUnique = true;
       } else {
         seq++;
@@ -86,18 +86,18 @@ exports.createSale = async (req, res) => {
 
     await withTransaction(async (client) => {
 
-      await query(
+      await run(
         `INSERT INTO sales (id, bill_number, customer_name, customer_phone, customer_gstin, subtotal, cgst, sgst, grand_total)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         VALUES (?,?,?,?,?,?,?,?,?)`,
         [saleId, billNumber, customerName, customerPhone || null, customerGSTIN || null, gst.subtotal, gst.cgst, gst.sgst, gst.grandTotal],
         client
       );
 
       for (const item of items) {
 
-        await query(
+        await run(
           `INSERT INTO sale_items (id, sale_id, product_name, quantity, price, item_total)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
+           VALUES (?,?,?,?,?,?)`,
           [
             createId(),
             saleId,
@@ -112,8 +112,8 @@ exports.createSale = async (req, res) => {
         const inv = await findInventoryForItem(client, item);
 
         if (inv) {
-          await query(
-            `UPDATE inventory SET quantity = quantity - $1 WHERE id = $2`,
+          await run(
+            `UPDATE inventory SET quantity = quantity - ? WHERE id = ?`,
             [item.quantity, inv.id],
             client
           );
@@ -177,7 +177,7 @@ exports.getSaleById = async (req, res) => {
 // ================= DELETE =================
 exports.deleteBill = async (req, res) => {
   try {
-    await query(`DELETE FROM sales WHERE id=$1`, [req.params.saleId]);
+    await run(`DELETE FROM sales WHERE id=?`, [req.params.saleId]);
 
     res.json({ success: true, message: "Deleted" });
 

@@ -1,12 +1,20 @@
 const { query } = require('./db');
 
 function mapInventoryRow(row) {
+  const parseJson = (val) => {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch (e) { return []; }
+    }
+    return val;
+  };
+
   return {
     _id: row.inventory_id,
     quantity: Number(row.quantity),
     price: Number(row.price),
     minimumStockLevel: row.minimum_stock_level,
-    isActive: row.is_active,
+    isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     variant: {
@@ -14,24 +22,24 @@ function mapInventoryRow(row) {
       productId: {
         _id: row.product_id,
         name: row.product_name,
-        hasGSM: row.product_has_gsm,
-        hasSize: row.product_has_size,
-        hasColor: row.product_has_color,
-        gsmOptions: row.gsm_options || [],
-        sizeOptions: row.size_options || [],
-        colorOptions: row.color_options || [],
+        hasGSM: Boolean(row.product_has_gsm),
+        hasSize: Boolean(row.product_has_size),
+        hasColor: Boolean(row.product_has_color),
+        gsmOptions: parseJson(row.gsm_options),
+        sizeOptions: parseJson(row.size_options),
+        colorOptions: parseJson(row.color_options),
         category: row.category,
         description: row.description,
-        isActive: row.product_is_active,
+        isActive: Boolean(row.product_is_active),
       },
       gsm: row.gsm,
       size: row.size,
       color: row.color,
-      hasSize: row.variant_has_size,
-      hasGSM: row.variant_has_gsm,
+      hasSize: Boolean(row.variant_has_size),
+      hasGSM: Boolean(row.variant_has_gsm),
       sku: row.sku,
       displayName: row.display_name,
-      isActive: row.variant_is_active,
+      isActive: Boolean(row.variant_is_active),
       createdAt: row.variant_created_at,
       updatedAt: row.variant_updated_at,
     },
@@ -43,11 +51,11 @@ async function getInventoryItems({ search = '', limit = 1000, isActive = true, i
   const clauses = [];
 
   if (isActive !== null) {
-    params.push(isActive);
+    params.push(isActive ? 1 : 0);
     clauses.push(`i.is_active = $${params.length}`);
     if (isActive === true) {
-      clauses.push(`v.is_active = TRUE`);
-      clauses.push(`p.is_active = TRUE`);
+      clauses.push(`v.is_active = 1`);
+      clauses.push(`p.is_active = 1`);
     }
   }
   if (inventoryId) {
@@ -120,7 +128,15 @@ async function getInventoryItems({ search = '', limit = 1000, isActive = true, i
 }
 
 function mapSaleRow(row) {
-  const items = Array.isArray(row.items) ? row.items : [];
+  let items = [];
+  if (row.items) {
+    if (typeof row.items === 'string') {
+      try { items = JSON.parse(row.items); } catch(e) {}
+    } else if (Array.isArray(row.items)) {
+      items = row.items;
+    }
+  }
+
   return {
     _id: row.id,
     billNumber: row.bill_number,
@@ -174,11 +190,13 @@ async function getSales({ saleId = null, customerId = null, search = '', startDa
     clauses.push(`(LOWER(s.bill_number) LIKE $${params.length} OR LOWER(s.customer_name) LIKE $${params.length})`);
   }
   if (startDate) {
-    params.push(startDate);
+    const sd = startDate instanceof Date ? startDate.toISOString().replace('T', ' ').slice(0, 19) : startDate;
+    params.push(sd);
     clauses.push(`s.date >= $${params.length}`);
   }
   if (endDate) {
-    params.push(endDate);
+    const ed = endDate instanceof Date ? endDate.toISOString().replace('T', ' ').slice(0, 19) : endDate;
+    params.push(ed);
     clauses.push(`s.date <= $${params.length}`);
   }
 
@@ -195,29 +213,31 @@ async function getSales({ saleId = null, customerId = null, search = '', startDa
         c.email AS customer_ref_email,
         c.address AS customer_ref_address,
         COALESCE(
-          json_agg(
-            json_build_object(
-              '_id', si.id,
-              'variantId', si.variant_id,
-              'productId', si.product_id,
-              'productName', si.product_name,
-              'displayName', si.display_name,
-              'gsm', si.gsm,
-              'size', si.size,
-              'color', si.color,
-              'price', si.price,
-              'quantity', si.quantity,
-              'itemTotal', si.item_total
+          (
+            SELECT json_group_array(
+              json_object(
+                '_id', si.id,
+                'variantId', si.variant_id,
+                'productId', si.product_id,
+                'productName', si.product_name,
+                'displayName', si.display_name,
+                'gsm', si.gsm,
+                'size', si.size,
+                'color', si.color,
+                'price', si.price,
+                'quantity', si.quantity,
+                'itemTotal', si.item_total
+              )
             )
-            ORDER BY si.created_at
-          ) FILTER (WHERE si.id IS NOT NULL),
-          '[]'::json
+            FROM sale_items si
+            WHERE si.sale_id = s.id
+          ),
+          '[]'
         ) AS items
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
-      LEFT JOIN sale_items si ON si.sale_id = s.id
       ${where}
-      GROUP BY s.id, c.id
+      GROUP BY s.id
       ORDER BY s.date DESC
       LIMIT $${params.length - 1}
       OFFSET $${params.length}
@@ -246,7 +266,7 @@ async function getSaleCount({ customerId = null, startDate = null, endDate = nul
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await query(`SELECT COUNT(*)::int AS count FROM sales ${where}`, params);
+  const result = await query(`SELECT COUNT(*) AS count FROM sales ${where}`, params);
   return result.rows[0].count;
 }
 

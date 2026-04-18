@@ -1,4 +1,4 @@
-const { query, withTransaction } = require('../lib/db');
+const { run, get, all, query, withTransaction } = require('../lib/db');
 const { createId } = require('../lib/ids');
 const {
   buildVariantDisplayName,
@@ -9,19 +9,27 @@ const {
 } = require('../lib/productUtils');
 
 function mapProduct(row) {
+  const parseJson = (val) => {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch (e) { return []; }
+    }
+    return val;
+  };
+
   return {
     _id: row.id,
     name: row.name,
-    hasGSM: row.has_gsm,
-    hasSize: row.has_size,
-    hasColor: row.has_color,
+    hasGSM: Boolean(row.has_gsm),
+    hasSize: Boolean(row.has_size),
+    hasColor: Boolean(row.has_color),
     description: row.description,
     category: row.category,
-    gsmOptions: row.gsm_options || [],
-    sizeOptions: row.size_options || [],
-    colorOptions: row.color_options || [],
-    isActive: row.is_active,
-    isManualProduct: row.is_manual_product,
+    gsmOptions: parseJson(row.gsm_options),
+    sizeOptions: parseJson(row.size_options),
+    colorOptions: parseJson(row.color_options),
+    isActive: Boolean(row.is_active),
+    isManualProduct: Boolean(row.is_manual_product),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -33,20 +41,20 @@ function mapVariant(row) {
     productId: row.product_id && row.product_name ? {
       _id: row.product_id,
       name: row.product_name,
-      hasGSM: row.product_has_gsm,
-      hasSize: row.product_has_size,
-      hasColor: row.product_has_color,
+      hasGSM: Boolean(row.product_has_gsm),
+      hasSize: Boolean(row.product_has_size),
+      hasColor: Boolean(row.product_has_color),
     } : row.productId,
     gsm: row.gsm,
     size: row.size,
     color: row.color,
-    hasSize: row.has_size,
-    hasGSM: row.has_gsm,
+    hasSize: Boolean(row.has_size),
+    hasGSM: Boolean(row.has_gsm),
     sku: row.sku,
     displayName: row.display_name,
-    isActive: row.variant_is_active ?? row.is_active,
-    price: row.inventory_price !== undefined ? Number(row.inventory_price) : Number(row.price || 0),
-    quantity: row.inventory_quantity !== undefined ? Number(row.inventory_quantity) : Number(row.quantity || 0),
+    isActive: Boolean(row.variant_is_active ?? row.is_active),
+    price: row.inventory_price !== undefined && row.inventory_price !== null ? Number(row.inventory_price) : Number(row.price || 0),
+    quantity: row.inventory_quantity !== undefined && row.inventory_quantity !== null ? Number(row.inventory_quantity) : Number(row.quantity || 0),
     inventoryId: row.inventory_id || row.inventoryId || null,
     createdAt: row.variant_created_at || row.created_at,
     updatedAt: row.variant_updated_at || row.updated_at,
@@ -54,23 +62,23 @@ function mapVariant(row) {
 }
 
 async function getProductRecordById(id) {
-  const result = await query(
+  const result = await get(
     `
       SELECT
         id, name, has_gsm, has_size, has_color, description, category,
         gsm_options, size_options, color_options, is_active, is_manual_product,
         created_at, updated_at
       FROM product_masters
-      WHERE id = $1
+      WHERE id = ?
       LIMIT 1
     `,
     [id]
   );
-  return result.rows[0] || null;
+  return result || null;
 }
 
 async function getVariantWithInventory(id) {
-  const result = await query(
+  const result = await get(
     `
       SELECT
         v.id AS variant_id,
@@ -95,12 +103,12 @@ async function getVariantWithInventory(id) {
       FROM product_variants v
       JOIN product_masters p ON p.id = v.product_id
       LEFT JOIN inventory i ON i.variant_id = v.id
-      WHERE v.id = $1
+      WHERE v.id = ?
       LIMIT 1
     `,
     [id]
   );
-  return result.rows[0] || null;
+  return result || null;
 }
 
 exports.getAllProducts = async (req, res, next) => {
@@ -109,18 +117,18 @@ exports.getAllProducts = async (req, res, next) => {
     const params = [];
     let where = '';
 
-    if (isActive === 'all') {
+      if (isActive === 'all') {
       // do not filter
     } else if (isActive === 'false') {
-      params.push(false);
-      where = `WHERE is_active = $1`;
+      params.push(0);
+      where = `WHERE is_active = ?`;
     } else {
       // Default to active only
-      params.push(true);
-      where = `WHERE is_active = $1`;
+      params.push(1);
+      where = `WHERE is_active = ?`;
     }
 
-    const products = await query(
+    const products = await all(
       `
         SELECT
           id, name, has_gsm, has_size, has_color, description, category,
@@ -133,7 +141,7 @@ exports.getAllProducts = async (req, res, next) => {
       params
     );
 
-    res.status(200).json(products.rows.map(mapProduct));
+    res.status(200).json(products.map(mapProduct));
   } catch (err) {
     next(err);
   }
@@ -146,7 +154,7 @@ exports.getProductById = async (req, res, next) => {
       return res.status(404).json({ message: 'Product not found' });
     }
 
-    const variants = await query(
+    const variants = await all(
       `
         SELECT
           v.id AS variant_id,
@@ -166,7 +174,7 @@ exports.getProductById = async (req, res, next) => {
           i.quantity AS inventory_quantity
         FROM product_variants v
         LEFT JOIN inventory i ON i.variant_id = v.id
-        WHERE v.product_id = $1 AND v.is_active = TRUE
+        WHERE v.product_id = ? AND v.is_active = 1
         ORDER BY v.display_name ASC
       `,
       [req.params.id]
@@ -174,7 +182,7 @@ exports.getProductById = async (req, res, next) => {
 
     res.status(200).json({
       ...mapProduct(product),
-      variants: variants.rows.map((row) =>
+      variants: variants.map((row) =>
         mapVariant({
           ...row,
           product_id: product.id,
@@ -198,45 +206,39 @@ exports.createProduct = async (req, res, next) => {
       return res.status(400).json({ message: 'Product name is required' });
     }
 
-    const existing = await query('SELECT id, is_active FROM product_masters WHERE name = $1 LIMIT 1', [name]);
-    if (existing.rowCount > 0) {
-      if (existing.rows[0].is_active) {
+    const existing = await get('SELECT id, is_active FROM product_masters WHERE name = ? LIMIT 1', [name]);
+    if (existing) {
+      if (existing.is_active) {
         return res.status(400).json({ message: `Product '${name}' already exists` });
       } else {
         // Reactivate soft-deleted product and update its configuration
-        const reactivated = await query(
+        await run(
           `
             UPDATE product_masters
-            SET is_active = TRUE, has_gsm = $2, has_size = $3, has_color = $4, updated_at = NOW()
-            WHERE id = $1
-            RETURNING
-              id, name, has_gsm, has_size, has_color, description, category,
-              gsm_options, size_options, color_options, is_active, is_manual_product,
-              created_at, updated_at
+            SET is_active = TRUE, has_gsm = ?, has_size = ?, has_color = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
           `,
-          [existing.rows[0].id, !!req.body.hasGSM, !!req.body.hasSize, !!req.body.hasColor]
+          [!!req.body.hasGSM, !!req.body.hasSize, !!req.body.hasColor, existing.id]
         );
+        const reactivated = await get(`SELECT * FROM product_masters WHERE id = ?`, [existing.id]);
         return res.status(201).json({
           message: 'Product reactivated successfully',
-          product: mapProduct(reactivated.rows[0]),
+          product: mapProduct(reactivated),
         });
       }
     }
 
-    const created = await query(
+    const newId = createId();
+    await run(
       `
         INSERT INTO product_masters (
           id, name, has_gsm, has_size, has_color, description, category,
           gsm_options, size_options, color_options, is_active, is_manual_product
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, TRUE, FALSE)
-        RETURNING
-          id, name, has_gsm, has_size, has_color, description, category,
-          gsm_options, size_options, color_options, is_active, is_manual_product,
-          created_at, updated_at
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE)
       `,
       [
-        createId(),
+        newId,
         name,
         !!req.body.hasGSM,
         !!req.body.hasSize,
@@ -249,9 +251,11 @@ exports.createProduct = async (req, res, next) => {
       ]
     );
 
+    const createdProduct = await get(`SELECT * FROM product_masters WHERE id = ?`, [newId]);
+
     res.status(201).json({
       message: 'Product created successfully',
-      product: mapProduct(created.rows[0]),
+      product: mapProduct(createdProduct),
     });
   } catch (err) {
     next(err);
@@ -273,14 +277,14 @@ exports.updateProduct = async (req, res, next) => {
 
     // Check for duplicate name
     if (nextName !== existing.name) {
-      const nameCheck = await query('SELECT id, is_active FROM product_masters WHERE name = $1 LIMIT 1', [nextName]);
-      if (nameCheck.rowCount > 0) {
-        if (nameCheck.rows[0].is_active) {
+      const nameCheck = await get('SELECT id, is_active FROM product_masters WHERE name = ? LIMIT 1', [nextName]);
+      if (nameCheck) {
+        if (nameCheck.is_active) {
           return res.status(400).json({ message: `A product with the name '${nextName}' already exists` });
         } else {
           // The conflicting product is inactive. Rename it to free up the name.
-          const oldId = nameCheck.rows[0].id;
-          await query('UPDATE product_masters SET name = $1 WHERE id = $2', [`${nextName}_deleted_${Date.now()}`, oldId]);
+          const oldId = nameCheck.id;
+          await run('UPDATE product_masters SET name = ? WHERE id = ?', [`${nextName}_deleted_${Date.now()}`, oldId]);
         }
       }
     }
@@ -295,33 +299,30 @@ exports.updateProduct = async (req, res, next) => {
       ? [...new Set([...(existing.color_options || []), ...req.body.colorOptions])]
       : existing.color_options || [];
 
-    const updated = await withTransaction(async (client) => {
-      const updatedProduct = await query(
+    const updatedId = req.params.id;
+    await withTransaction(async (client) => {
+      await run(
         `
           UPDATE product_masters
           SET
-          name = $1,
-          description = $2,
-          has_gsm = $3,
-          has_size = $4,
-          has_color = $5,
-          gsm_options = $6::jsonb,
-          size_options = $7::jsonb,
-          color_options = $8::jsonb,
-          updated_at = NOW()
-        WHERE id = $9
-        RETURNING
-          id, name, has_gsm, has_size, has_color, description, category,
-          gsm_options, size_options, color_options, is_active, is_manual_product,
-          created_at, updated_at
+          name = ?,
+          description = ?,
+          has_gsm = ?,
+          has_size = ?,
+          has_color = ?,
+          gsm_options = ?,
+          size_options = ?,
+          color_options = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [nextName, nextDescription, nextHasGsm, nextHasSize, nextHasColor, JSON.stringify(mergedGsm), JSON.stringify(mergedSizes), JSON.stringify(mergedColors), req.params.id],
       client
     );
 
       if (nextName !== existing.name || nextHasGsm !== existing.has_gsm || nextHasSize !== existing.has_size || nextHasColor !== existing.has_color) {
-        const variants = await query('SELECT id, gsm, size, color FROM product_variants WHERE product_id = $1', [req.params.id], client);
-        for (const variant of variants.rows) {
+        const variants = await all('SELECT id, gsm, size, color FROM product_variants WHERE product_id = ?', [req.params.id], client);
+        for (const variant of variants) {
           const nextDisplayName = buildVariantDisplayName(
             { name: nextName, hasGSM: nextHasGsm, hasSize: nextHasSize, hasColor: nextHasColor },
             { gsm: variant.gsm, size: variant.size, color: variant.color }
@@ -329,20 +330,20 @@ exports.updateProduct = async (req, res, next) => {
           const nextSku = buildVariantSku(nextName, variant.gsm, variant.size, variant.color);
           const nextKey = buildVariantKey(req.params.id, variant.gsm, variant.size, variant.color);
           
-          await query(
-            'UPDATE product_variants SET display_name = $1, sku = $2, variant_key = $3 WHERE id = $4',
+          await run(
+            'UPDATE product_variants SET display_name = ?, sku = ?, variant_key = ? WHERE id = ?',
             [nextDisplayName, nextSku, nextKey, variant.id],
             client
           );
         }
       }
-
-      return updatedProduct;
     });
+
+    const finalProduct = await get(`SELECT * FROM product_masters WHERE id = ?`, [updatedId]);
 
     res.status(200).json({
       message: 'Product updated successfully',
-      product: mapProduct(updated.rows[0]),
+      product: mapProduct(finalProduct),
     });
   } catch (err) {
     next(err);
@@ -351,27 +352,25 @@ exports.updateProduct = async (req, res, next) => {
 
 exports.deleteProduct = async (req, res, next) => {
   try {
-    const deleted = await query(
+    const { changes } = await run(
       `
         UPDATE product_masters
-        SET is_active = FALSE, updated_at = NOW()
-        WHERE id = $1
-        RETURNING
-          id, name, has_gsm, has_size, has_color, description, category,
-          gsm_options, size_options, color_options, is_active, is_manual_product,
-          created_at, updated_at
+        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [req.params.id]
     );
 
-    if (deleted.rowCount === 0) {
+    if (changes === 0) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
     // Also soft-delete all associated variants so they stop showing up
-    await query(`UPDATE product_variants SET is_active = FALSE, updated_at = NOW() WHERE product_id = $1`, [req.params.id]);
+    await run(`UPDATE product_variants SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE product_id = ?`, [req.params.id]);
 
-    res.status(200).json({ message: 'Product deleted successfully', product: mapProduct(deleted.rows[0]) });
+    const finalProduct = await get(`SELECT * FROM product_masters WHERE id = ?`, [req.params.id]);
+
+    res.status(200).json({ message: 'Product deleted successfully', product: mapProduct(finalProduct) });
   } catch (err) {
     next(err);
   }
@@ -385,15 +384,15 @@ exports.getAllVariants = async (req, res, next) => {
 
     if (productId) {
       params.push(productId);
-      clauses.push(`v.product_id = $${params.length}`);
+      clauses.push(`v.product_id = ?`);
     }
     if (isActive !== undefined) {
-      params.push(isActive === 'true');
-      clauses.push(`v.is_active = $${params.length}`);
+      params.push(isActive === 'true' ? 1 : 0);
+      clauses.push(`v.is_active = ?`);
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-    const variants = await query(
+    const variants = await all(
       `
         SELECT
           v.id AS variant_id,
@@ -424,7 +423,7 @@ exports.getAllVariants = async (req, res, next) => {
       params
     );
 
-    res.status(200).json(variants.rows.map(mapVariant));
+    res.status(200).json(variants.map(mapVariant));
   } catch (err) {
     next(err);
   }
@@ -448,42 +447,39 @@ exports.createVariant = async (req, res, next) => {
     let product = null;
 
     if (isManualProduct && !productId) {
-      const existingProduct = await query(
+      const existingProduct = await get(
         `
           SELECT
             id, name, has_gsm, has_size, has_color, description, category,
             gsm_options, size_options, color_options, is_active, is_manual_product,
             created_at, updated_at
           FROM product_masters
-          WHERE name = $1
+          WHERE name = ?
           LIMIT 1
         `,
         [productName]
       );
 
-      if (existingProduct.rowCount > 0) {
-        product = existingProduct.rows[0];
+      if (existingProduct) {
+        product = existingProduct;
         if (!product.is_active) {
           // Reactivate the soft-deleted product
-          await query('UPDATE product_masters SET is_active = TRUE, updated_at = NOW() WHERE id = $1', [product.id]);
+          await run('UPDATE product_masters SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [product.id]);
           product.is_active = true;
         }
       } else {
-        const createdProduct = await query(
+        const prodId = createId();
+        await run(
           `
             INSERT INTO product_masters (
               id, name, has_gsm, has_size, has_color, description, category,
               gsm_options, size_options, color_options, is_active, is_manual_product
             )
-            VALUES ($1, $2, $3, $4, $5, NULL, 'Standard Envelope', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, TRUE, TRUE)
-            RETURNING
-              id, name, has_gsm, has_size, has_color, description, category,
-              gsm_options, size_options, color_options, is_active, is_manual_product,
-              created_at, updated_at
+            VALUES (?, ?, ?, ?, ?, NULL, 'Standard Envelope', '[]', '[]', '[]', TRUE, TRUE)
           `,
-          [createId(), productName, !!gsm, !!size, !!color]
+          [prodId, productName, !!gsm, !!size, !!color]
         );
-        product = createdProduct.rows[0];
+        product = await get(`SELECT * FROM product_masters WHERE id = ?`, [prodId]);
       }
     } else {
       product = await getProductRecordById(productId);
@@ -500,27 +496,27 @@ exports.createVariant = async (req, res, next) => {
     }
 
     const variantKey = buildVariantKey(product.id, normalizeOptionalValue(gsm), normalizeOptionalValue(size), normalizeOptionalValue(color));
-    const duplicate = await query('SELECT id, is_active FROM product_variants WHERE variant_key = $1 LIMIT 1', [variantKey]);
+    const duplicate = await get('SELECT id, is_active FROM product_variants WHERE variant_key = ? LIMIT 1', [variantKey]);
     
-    if (duplicate.rowCount > 0) {
-      const variantId = duplicate.rows[0].id;
+    if (duplicate) {
+      const variantId = duplicate.id;
 
-      if (duplicate.rows[0].is_active) {
+      if (duplicate.is_active) {
         // Variant is active. Check if inventory exists.
-        const invCheck = await query('SELECT id, is_active FROM inventory WHERE variant_id = $1 LIMIT 1', [variantId]);
-        if (invCheck.rowCount > 0) {
-          if (invCheck.rows[0].is_active) {
+        const invCheck = await get('SELECT id, is_active FROM inventory WHERE variant_id = ? LIMIT 1', [variantId]);
+        if (invCheck) {
+          if (invCheck.is_active) {
             return res.status(400).json({ message: 'This variant already exists and has active inventory' });
           } else {
             // Inventory exists but inactive, reactivate it
-            await query('UPDATE inventory SET is_active = TRUE, price = $1, updated_at = NOW() WHERE id = $2', [Number(price || 0), invCheck.rows[0].id]);
+            await run('UPDATE inventory SET is_active = TRUE, price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [Number(price || 0), invCheck.id]);
             const reactivated = await getVariantWithInventory(variantId);
             return res.status(201).json({ message: 'Inventory reactivated successfully', variant: mapVariant(reactivated) });
           }
         } else {
           // Variant exists but NO inventory record. Create it now!
-          await query(
-            'INSERT INTO inventory (id, variant_id, quantity, price, minimum_stock_level, is_active) VALUES ($1, $2, 0, $3, 50, TRUE)',
+          await run(
+            'INSERT INTO inventory (id, variant_id, quantity, price, minimum_stock_level, is_active) VALUES (?, ?, 0, ?, 50, TRUE)',
             [createId(), variantId, Number(price || 0)]
           );
           const created = await getVariantWithInventory(variantId);
@@ -529,14 +525,14 @@ exports.createVariant = async (req, res, next) => {
       } else {
         // Reactivate soft-deleted variant and inventory
         await withTransaction(async (client) => {
-          await query(
-            'UPDATE product_variants SET is_active = TRUE, updated_at = NOW() WHERE id = $1',
+          await run(
+            'UPDATE product_variants SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             [variantId],
             client
           );
           
-          await query(
-            'UPDATE inventory SET is_active = TRUE, price = $1, updated_at = NOW() WHERE variant_id = $2',
+          await run(
+            'UPDATE inventory SET is_active = TRUE, price = ?, updated_at = CURRENT_TIMESTAMP WHERE variant_id = ?',
             [Number(price || 0), variantId],
             client
           );
@@ -557,13 +553,13 @@ exports.createVariant = async (req, res, next) => {
     const variantId = createId();
 
     await withTransaction(async (client) => {
-      await query(
+      await run(
         `
           INSERT INTO product_variants (
             id, product_id, gsm, size, color, has_size, has_gsm,
             sku, display_name, variant_key, is_active
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
         `,
         [
           variantId,
@@ -580,10 +576,10 @@ exports.createVariant = async (req, res, next) => {
         client
       );
 
-      await query(
+      await run(
         `
           INSERT INTO inventory (id, variant_id, quantity, price, minimum_stock_level, is_active)
-          VALUES ($1, $2, 0, $3, 50, TRUE)
+          VALUES (?, ?, 0, ?, 50, TRUE)
         `,
         [createId(), variantId, Number(price || 0)],
         client
@@ -617,11 +613,11 @@ exports.updateVariant = async (req, res, next) => {
     const nextColor = req.body.color !== undefined ? normalizeOptionalValue(req.body.color) : existing.color;
     const nextKey = buildVariantKey(product.id, nextGsm, nextSize, nextColor);
 
-    const duplicate = await query(
-      'SELECT id FROM product_variants WHERE variant_key = $1 AND id <> $2 LIMIT 1',
+    const duplicate = await get(
+      'SELECT id FROM product_variants WHERE variant_key = ? AND id <> ? LIMIT 1',
       [nextKey, req.params.id]
     );
-    if (duplicate.rowCount > 0) {
+    if (duplicate) {
       return res.status(400).json({ message: 'Another variant with these specs already exists' });
     }
 
@@ -631,18 +627,18 @@ exports.updateVariant = async (req, res, next) => {
     );
 
     await withTransaction(async (client) => {
-      await query(
+      await run(
         `
           UPDATE product_variants
           SET
-            gsm = $1,
-            size = $2,
-            color = $3,
-            display_name = $4,
-            sku = $5,
-            variant_key = $6,
-            updated_at = NOW()
-          WHERE id = $7
+            gsm = ?,
+            size = ?,
+            color = ?,
+            display_name = ?,
+            sku = ?,
+            variant_key = ?,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
         `,
         [
           nextGsm,
@@ -657,11 +653,11 @@ exports.updateVariant = async (req, res, next) => {
       );
 
       if (req.body.price !== undefined) {
-        await query(
+        await run(
           `
             UPDATE inventory
-            SET price = $1, updated_at = NOW()
-            WHERE variant_id = $2
+            SET price = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE variant_id = ?
           `,
           [Number(req.body.price), req.params.id],
           client
@@ -687,25 +683,25 @@ exports.deleteVariant = async (req, res, next) => {
     }
 
     await withTransaction(async (client) => {
-      await query('DELETE FROM inventory WHERE variant_id = $1', [req.params.id], client);
-      await query('DELETE FROM product_variants WHERE id = $1', [req.params.id], client);
+      await run('DELETE FROM inventory WHERE variant_id = ?', [req.params.id], client);
+      await run('DELETE FROM product_variants WHERE id = ?', [req.params.id], client);
     });
 
-    const remaining = await query(
-      'SELECT COUNT(*)::int AS count FROM product_variants WHERE product_id = $1 AND is_active = TRUE',
+    const remaining = await get(
+      'SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ? AND is_active = 1',
       [variant.product_id]
     );
 
-    if (remaining.rows[0].count === 0) {
+    if (remaining.count === 0) {
       // Auto-hide the product master if it has no more variants
-      await query('UPDATE product_masters SET is_active = FALSE WHERE id = $1', [variant.product_id]);
+      await run('UPDATE product_masters SET is_active = 0 WHERE id = ?', [variant.product_id]);
     }
 
     res.status(200).json({
       message: 'Variant and Inventory deleted successfully',
       variant: mapVariant(variant),
       inventoryDeleted: true,
-      remainingVariants: remaining.rows[0].count,
+      remainingVariants: remaining.count,
     });
   } catch (err) {
     next(err);
@@ -714,10 +710,10 @@ exports.deleteVariant = async (req, res, next) => {
 
 exports.getMaterialOptions = async (req, res, next) => {
   try {
-    const products = await query(
+    const products = await all(
       'SELECT name FROM product_masters WHERE is_active = TRUE ORDER BY name ASC'
     );
-    res.status(200).json(products.rows.map((row) => row.name));
+    res.status(200).json(products.map((row) => row.name));
   } catch (err) {
     next(err);
   }
@@ -770,7 +766,7 @@ exports.getColorOptions = async (req, res, next) => {
 
 exports.getProductConfiguration = async (req, res, next) => {
   try {
-    const products = await query(
+    const products = await all(
       `
         SELECT
           id, name, has_gsm, has_size, has_color, gsm_options, size_options, color_options
@@ -780,7 +776,7 @@ exports.getProductConfiguration = async (req, res, next) => {
     );
 
     const config = {};
-    for (const product of products.rows) {
+    for (const product of products) {
       config[product.name] = {
         hasGSM: product.has_gsm,
         hasSize: product.has_size,

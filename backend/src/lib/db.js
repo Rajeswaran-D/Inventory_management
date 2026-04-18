@@ -1,208 +1,150 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+const sqlite3 = require('sqlite3').verbose();
+const { open } = require('sqlite');
+const fs = require('fs');
+const path = require('path');
 
-// ✅ Connection
-const connectionString =
-  process.env.DATABASE_URL ||
-  'postgresql://postgres:pradeepan5525@localhost:5432/inventory_management';
+let dbInstance = null;
 
-const pool = new Pool({
-  connectionString,
-  ssl: false,
-});
+// Database Connection Factory
+async function initDbConnection() {
+  if (dbInstance) return dbInstance;
+  
+  // Store db file in the root of the backend folder
+  const dbPath = path.resolve(__dirname, '../../database.sqlite');
+  
+  dbInstance = await open({
+    filename: dbPath,
+    driver: sqlite3.Database
+  });
+  
+  // Explicitly enable foreign key constraints 
+  await dbInstance.exec('PRAGMA foreign_keys = ON;');
+  return dbInstance;
+}
 
-// ✅ Test connection
-async function testConnection() {
+function processQueryAndParams(text, params) {
+  let sqliteText = text.replace(/\bNOW\(\)/gi, "CURRENT_TIMESTAMP");
+  let newParams = params;
+
+  // Convert array parameters to named parameters if the query uses positional $1, $2
+  if (Array.isArray(params) && /\$[0-9]+/.test(sqliteText)) {
+    newParams = {};
+    params.forEach((val, idx) => {
+      newParams[`$${idx+1}`] = val;
+    });
+  }
+
+  return { sqliteText, newParams };
+}
+
+// -------------------------------------------------------------
+// Core Database Wrapper 
+// -------------------------------------------------------------
+
+async function run(text, params = [], client = null) {
+  const db = client || await initDbConnection();
+  const { sqliteText, newParams } = processQueryAndParams(text, params);
+  const result = await db.run(sqliteText, newParams);
+  return { lastID: result.lastID, changes: result.changes };
+}
+
+async function get(text, params = [], client = null) {
+  const db = client || await initDbConnection();
+  const { sqliteText, newParams } = processQueryAndParams(text, params);
+  return await db.get(sqliteText, newParams);
+}
+
+async function all(text, params = [], client = null) {
+  const db = client || await initDbConnection();
+  const { sqliteText, newParams } = processQueryAndParams(text, params);
+  return await db.all(sqliteText, newParams);
+}
+
+// Legacy postgresql-compatible function for untouched controllers
+async function query(text, params = [], client = null) {
+  const db = client || await initDbConnection();
+  const { sqliteText, newParams } = processQueryAndParams(text, params);
+  
   try {
-    const client = await pool.connect();
-    console.log("✅ Connected to PostgreSQL");
-    client.release();
-  } catch (err) {
-    console.error("❌ Database connection error:", err.message);
-    process.exit(1);
+    const isSelect = /^\s*SELECT/i.test(sqliteText);
+    const hasReturning = /\bRETURNING\b/i.test(sqliteText);
+
+    if (isSelect || hasReturning) {
+      const rows = await db.all(sqliteText, newParams);
+      return { rows, rowCount: rows.length };
+    } else {
+      const result = await db.run(sqliteText, newParams);
+      return { rows: [], rowCount: result.changes || 0 };
+    }
+  } catch (error) {
+    if (error.message.includes('SQLITE_CONSTRAINT_UNIQUE')) {
+       error.code = '23505'; 
+    }
+    throw error;
   }
 }
 
-// ✅ Query helper
-async function query(text, params = [], client = null) {
-  const executor = client || pool;
-  return executor.query(text, params);
-}
+// -------------------------------------------------------------
+// Transaction Management (Mimics Postgres withTransaction)
+// -------------------------------------------------------------
 
-// ✅ Transaction helper
 async function withTransaction(work) {
-  const client = await pool.connect();
+  const db = await initDbConnection();
+  await db.exec('BEGIN IMMEDIATE TRANSACTION');
   try {
-    await client.query('BEGIN');
-    const result = await work(client);
-    await client.query('COMMIT');
+    const result = await work(db); 
+    await db.exec('COMMIT TRANSACTION');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await db.exec('ROLLBACK TRANSACTION');
     console.error("❌ Transaction Error:", error.message);
     throw error;
-  } finally {
-    client.release();
   }
 }
 
-// ✅ Initialize DB
+// -------------------------------------------------------------
+// Schema Initialization
+// -------------------------------------------------------------
+
 async function initDb() {
+  const db = await initDbConnection();
   try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'employee',
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS customers (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT,
-        email TEXT,
-        address TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS product_masters (
-        id TEXT PRIMARY KEY,
-        name TEXT UNIQUE,
-        has_gsm BOOLEAN DEFAULT TRUE,
-        has_size BOOLEAN DEFAULT TRUE,
-        has_color BOOLEAN DEFAULT FALSE,
-        description TEXT,
-        category TEXT DEFAULT 'Standard Envelope',
-        gsm_options JSONB DEFAULT '[]'::jsonb,
-        size_options JSONB DEFAULT '[]'::jsonb,
-        color_options JSONB DEFAULT '[]'::jsonb,
-        is_active BOOLEAN DEFAULT TRUE,
-        is_manual_product BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS product_variants (
-        id TEXT PRIMARY KEY,
-        product_id TEXT REFERENCES product_masters(id) ON DELETE CASCADE,
-        gsm INTEGER,
-        size TEXT,
-        color TEXT,
-        sku TEXT UNIQUE,
-        display_name TEXT NOT NULL,
-        variant_key TEXT UNIQUE,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS inventory (
-        id TEXT PRIMARY KEY,
-        variant_id TEXT UNIQUE REFERENCES product_variants(id) ON DELETE CASCADE,
-        product_id TEXT,
-        quantity INTEGER DEFAULT 0,
-        price NUMERIC(12,2) DEFAULT 0,
-        minimum_stock_level INTEGER DEFAULT 50,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS pricing_tiers (
-        id TEXT PRIMARY KEY,
-        name TEXT UNIQUE,
-        description TEXT,
-        tier_type TEXT,
-        min_quantity INTEGER,
-        max_quantity INTEGER,
-        customer_type TEXT,
-        discount_type TEXT,
-        discount_value NUMERIC(12,2),
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS sales (
-        id TEXT PRIMARY KEY,
-        bill_number TEXT UNIQUE,
-        customer_name TEXT,
-        customer_phone TEXT,
-        customer_gstin TEXT,
-        subtotal NUMERIC(12,2),
-        cgst NUMERIC(12,2),
-        sgst NUMERIC(12,2),
-        grand_total NUMERIC(12,2),
-        date TIMESTAMPTZ DEFAULT NOW(),
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS sale_items (
-        id TEXT PRIMARY KEY,
-        sale_id TEXT REFERENCES sales(id) ON DELETE CASCADE,
-        variant_id TEXT,
-        product_name TEXT,
-        gsm TEXT,
-        size TEXT,
-        color TEXT,
-        quantity INTEGER,
-        price NUMERIC(12,2),
-        item_total NUMERIC(12,2),
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    // ✅ Ensure missing columns (safe update)
-    await query(`
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_phone TEXT;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_address TEXT;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_gstin TEXT;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS cgst_rate NUMERIC(5,2) DEFAULT 6;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS sgst_rate NUMERIC(5,2) DEFAULT 6;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS igst NUMERIC(12,2) DEFAULT 0;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS round_off NUMERIC(12,2) DEFAULT 0;
-      ALTER TABLE sales ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-      ALTER TABLE product_masters ADD COLUMN IF NOT EXISTS is_manual_product BOOLEAN DEFAULT FALSE;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS gsm INTEGER;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS size TEXT;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS color TEXT;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS sku TEXT;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS has_gsm BOOLEAN DEFAULT TRUE;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS has_size BOOLEAN DEFAULT TRUE;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-      ALTER TABLE product_variants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-      ALTER TABLE inventory ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variant_id TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS product_id TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS display_name TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS gsm TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS size TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS color TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS product_name TEXT;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS quantity INTEGER;
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS price NUMERIC(12,2);
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS item_total NUMERIC(12,2);
-      ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
-    `);
-
-    console.log("✅ Tables created / verified (schema updated)");
-
+    const schemaPath = path.resolve(__dirname, '../../schema.sql');
+    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+    
+    await db.exec(schemaSql);
+    console.log("✅ DB Init: Connected to SQLite and verified tables.");
   } catch (err) {
     console.error("❌ DB Init Error:", err.message);
     throw err;
   }
 }
 
+// -------------------------------------------------------------
+// Healthcheck & Legacy Support
+// -------------------------------------------------------------
+
+async function testConnection() {
+  try {
+    await initDbConnection();
+    console.log("✅ Connected to SQLite database successfully");
+  } catch (err) {
+    console.error("❌ Database connection error:", err.message);
+    process.exit(1);
+  }
+}
+
 module.exports = {
-  pool,
+  // Mock 'pool' for any legacy PG calls expecting it
+  get pool() { 
+    return {
+      query: (text, params) => query(text, params)
+    };
+  },
   query,
+  run,
+  get,
+  all,
   withTransaction,
   initDb,
   testConnection,

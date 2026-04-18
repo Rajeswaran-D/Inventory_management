@@ -1,4 +1,4 @@
-const { query } = require('../lib/db');
+const { run, get, all, query } = require('../lib/db');
 const { PRODUCTS } = require('../data/productDefinitions');
 const { getInventoryItems } = require('../lib/store');
 
@@ -69,15 +69,14 @@ exports.updateInventory = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Provide at least quantity or price to update' });
     }
 
-    const updated = await query(
+    const { changes } = await run(
       `
         UPDATE inventory
         SET
-          quantity = COALESCE($1, quantity),
-          price = COALESCE($2, price),
-          updated_at = NOW()
-        WHERE id = $3
-        RETURNING id
+          quantity = COALESCE(?, quantity),
+          price = COALESCE(?, price),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [
         quantity !== undefined ? Math.max(0, Number(quantity)) : null,
@@ -86,7 +85,7 @@ exports.updateInventory = async (req, res) => {
       ]
     );
 
-    if (updated.rowCount === 0) {
+    if (changes === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
@@ -103,17 +102,16 @@ exports.updateInventory = async (req, res) => {
 
 exports.deleteInventory = async (req, res) => {
   try {
-    const deleted = await query(
+    const { changes } = await run(
       `
         UPDATE inventory
-        SET is_active = FALSE, updated_at = NOW()
-        WHERE id = $1
-        RETURNING id
+        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [req.params.inventoryId]
     );
 
-    if (deleted.rowCount === 0) {
+    if (changes === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
@@ -131,22 +129,22 @@ exports.searchInventory = async (req, res) => {
 
     if (productName) {
       params.push(productName);
-      clauses.push(`p.name = $${params.length}`);
+      clauses.push(`p.name = ?`);
     }
     if (gsm && gsm !== 'null' && gsm !== '') {
       params.push(Number(gsm));
-      clauses.push(`v.gsm = $${params.length}`);
+      clauses.push(`v.gsm = ?`);
     }
     if (size && size !== 'null' && size !== '') {
       params.push(size);
-      clauses.push(`v.size = $${params.length}`);
+      clauses.push(`v.size = ?`);
     }
     if (color && color !== 'null' && color !== '') {
       params.push(color);
-      clauses.push(`v.color = $${params.length}`);
+      clauses.push(`v.color = ?`);
     }
 
-    const items = await query(
+    const items = await all(
       `
         SELECT i.id
         FROM inventory i
@@ -158,7 +156,7 @@ exports.searchInventory = async (req, res) => {
       params
     );
 
-    const ids = items.rows.map((row) => row.id);
+    const ids = items.map((row) => row.id);
     const results = [];
     for (const id of ids) {
       const [item] = await getInventoryItems({ inventoryId: id, isActive: null, limit: 1 });
@@ -220,14 +218,14 @@ exports.bulkUpdateInventory = async (req, res) => {
     const results = [];
     for (const update of updates) {
       const { id, ...data } = update;
-      await query(
+      await run(
         `
           UPDATE inventory
           SET
-            quantity = COALESCE($1, quantity),
-            price = COALESCE($2, price),
-            updated_at = NOW()
-          WHERE id = $3
+            quantity = COALESCE(?, quantity),
+            price = COALESCE(?, price),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
         `,
         [
           data.quantity !== undefined ? Number(data.quantity) : null,
@@ -258,17 +256,16 @@ exports.addStock = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Quantity must be a positive number' });
     }
 
-    const updated = await query(
+    const { changes } = await run(
       `
         UPDATE inventory
-        SET quantity = quantity + $1, updated_at = NOW()
-        WHERE id = $2
-        RETURNING quantity
+        SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [parseInt(quantity, 10), req.params.inventoryId]
     );
 
-    if (updated.rowCount === 0) {
+    if (changes === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
@@ -313,11 +310,11 @@ exports.reduceStock = async (req, res) => {
       });
     }
 
-    await query(
+    await run(
       `
         UPDATE inventory
-        SET quantity = quantity - $1, updated_at = NOW()
-        WHERE id = $2
+        SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
       `,
       [reduceQty, req.params.inventoryId]
     );
