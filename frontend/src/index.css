@@ -5,7 +5,6 @@
    ============================================ */
 
 :root {
-  /* Primary Brand Color - Green */
   --primary: #16a34a;
   --primary-50: #f0fdf4;
   --primary-100: #dcfce7;
@@ -17,46 +16,40 @@
   --primary-700: #15803d;
   --primary-800: #166534;
   --primary-900: #145231;
-  
-  /* Background Colors */
+
   --bg-main: #ffffff;
   --bg-secondary: #f9fafb;
   --bg-tertiary: #f3f4f6;
   --bg-card: #ffffff;
-  
-  /* Text Colors */
+
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --text-tertiary: #9ca3af;
-  
-  /* Border & Shadow */
+
   --border: #e5e7eb;
   --border-light: #f3f4f6;
-  
-  /* Status Colors */
+
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
   --info: #3b82f6;
-  
-  /* Shadows */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+  --shadow-xl: 0 20px 25px rgba(0,0,0,0.1);
 }
 
 html {
-  background-color: var(--bg-main) !important;
-  color: var(--text-primary) !important;
-  color-scheme: light;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
   font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
 }
 
 body {
-  background-color: var(--bg-main) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
 }
 
 * {
@@ -64,86 +57,55 @@ body {
 }
 
 /* ============================================
-   PREMIUM UTILITY CLASSES
+   UTILITIES
    ============================================ */
 
-/* Backgrounds */
 .bg-main { @apply bg-[color:var(--bg-main)]; }
 .bg-secondary { @apply bg-[color:var(--bg-secondary)]; }
 .bg-tertiary { @apply bg-[color:var(--bg-tertiary)]; }
 .bg-card { @apply bg-[color:var(--bg-card)]; }
 
-/* Text */
 .text-primary { @apply text-[color:var(--text-primary)]; }
 .text-secondary { @apply text-[color:var(--text-secondary)]; }
 .text-tertiary { @apply text-[color:var(--text-tertiary)]; }
 
-/* Borders */
 .border-primary { @apply border-[color:var(--primary)]; }
 .border-secondary { @apply border-[color:var(--border)]; }
 
 /* ============================================
-   PREMIUM BUTTON STYLES
+   BUTTONS
    ============================================ */
 
 .btn-primary {
   @apply px-4 py-2.5 bg-green-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:bg-green-700 active:scale-95 transition-all duration-200;
 }
 
-.btn-primary-lg {
-  @apply px-6 py-3 bg-green-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:bg-green-700 active:scale-95 transition-all duration-200;
-}
-
 .btn-secondary {
   @apply px-4 py-2.5 bg-gray-100 text-gray-900 font-medium rounded-lg hover:bg-gray-200 active:scale-95 transition-all duration-200;
 }
 
-.btn-ghost {
-  @apply px-4 py-2.5 text-gray-700 font-medium rounded-lg hover:bg-gray-100 active:scale-95 transition-all duration-200;
-}
-
-.btn-danger {
-  @apply px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:bg-red-700 active:scale-95 transition-all duration-200;
-}
-
-.btn-success {
-  @apply px-4 py-2.5 bg-green-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:bg-green-700 active:scale-95 transition-all duration-200;
-}
-
 /* ============================================
-   PREMIUM CARD & CONTAINER STYLES
+   CARD
    ============================================ */
 
 .card-base {
   @apply bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200;
 }
 
-.card-elevated {
-  @apply bg-white rounded-xl border border-gray-200 shadow-md hover:shadow-lg transition-all duration-200;
-}
-
-.card-premium {
-  @apply bg-white rounded-2xl border border-gray-150 shadow-lg hover:shadow-xl transition-all duration-200;
-}
-
 /* ============================================
-   PREMIUM INPUT STYLES
+   INPUT
    ============================================ */
 
 .input-base {
-  @apply w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 font-medium placeholder-gray-500 transition-all duration-200;
+  @apply w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-500 transition-all duration-200;
 }
 
 .input-base:focus {
-  @apply outline-none ring-2 ring-green-500 ring-offset-2 border-green-500;
-}
-
-.input-base::placeholder {
-  @apply text-gray-400;
+  @apply outline-none ring-2 ring-green-500 border-green-500;
 }
 
 /* ============================================
-   PREMIUM TABLE STYLES
+   TABLE
    ============================================ */
 
 .table-container {
@@ -155,69 +117,57 @@ body {
 }
 
 .table-header th {
-  @apply px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider;
+  @apply px-6 py-3 text-xs font-bold text-gray-700 uppercase;
 }
 
 .table-body tr:hover {
-  @apply bg-gray-50 transition-colors duration-150;
+  @apply bg-gray-50;
 }
 
 .table-body td {
-  @apply px-6 py-3.5 border-b border-gray-100;
-}
-
-.table-body tr:last-child td {
-  @apply border-b-0;
+  @apply px-6 py-3 border-b border-gray-100;
 }
 
 /* ============================================
-   PREMIUM BADGE STYLES
+   BADGES
    ============================================ */
 
 .badge-success {
-  @apply px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-xs font-bold;
-}
-
-.badge-warning {
-  @apply px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-bold;
-}
-
-.badge-danger {
-  @apply px-3 py-1.5 bg-red-100 text-red-800 rounded-full text-xs font-bold;
-}
-
-.badge-info {
-  @apply px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-xs font-bold;
+  @apply px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold;
 }
 
 /* ============================================
-   PREMIUM ANIMATIONS
+   ✅ FIXED ANIMATIONS (NO @apply)
    ============================================ */
 
 @keyframes slideInDown {
   from {
-    @apply opacity-0 -translate-y-2;
+    opacity: 0;
+    transform: translateY(-8px);
   }
   to {
-    @apply opacity-100 translate-y-0;
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes slideInUp {
   from {
-    @apply opacity-0 translate-y-2;
+    opacity: 0;
+    transform: translateY(8px);
   }
   to {
-    @apply opacity-100 translate-y-0;
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 @keyframes fadeIn {
   from {
-    @apply opacity-0;
+    opacity: 0;
   }
   to {
-    @apply opacity-100;
+    opacity: 1;
   }
 }
 

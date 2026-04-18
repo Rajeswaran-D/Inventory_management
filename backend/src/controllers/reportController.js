@@ -1,142 +1,85 @@
-const Sale = require('../models/Sale');
-const Inventory = require('../models/Inventory');
 const ExcelJS = require('exceljs');
+
+const { getInventoryItems, getSales } = require('../lib/store');
+
+function buildDateRange(startDate, endDate) {
+  if (startDate && endDate) {
+    return {
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+    };
+  }
+
+  const defaultStart = new Date();
+  defaultStart.setHours(0, 0, 0, 0);
+  defaultStart.setDate(defaultStart.getDate() - 30);
+  return { startDate: defaultStart, endDate: null };
+}
+
+function buildAnalytics(sales, inventory) {
+  const revenueByDateMap = new Map();
+  const salesCountMap = new Map();
+  const productStatsMap = new Map();
+
+  for (const sale of sales) {
+    const dateKey = new Date(sale.date).toISOString().slice(0, 10);
+    revenueByDateMap.set(dateKey, (revenueByDateMap.get(dateKey) || 0) + sale.grandTotal);
+    salesCountMap.set(dateKey, (salesCountMap.get(dateKey) || 0) + 1);
+
+    for (const item of sale.items) {
+      const key = item.displayName || item.productName || 'Unknown';
+      const current = productStatsMap.get(key) || { name: key, quantity: 0, revenue: 0 };
+      current.quantity += item.quantity;
+      current.revenue += item.itemTotal;
+      productStatsMap.set(key, current);
+    }
+  }
+
+  const lowStock = inventory.filter((item) => item.quantity < (item.minimumStockLevel || 50)).length;
+  const sufficientStock = inventory.length - lowStock;
+
+  const revenueByDate = [...revenueByDateMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, revenue]) => ({ date, revenue: parseFloat(revenue.toFixed(2)) }));
+
+  const salesCount = [...salesCountMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  const productStats = [...productStatsMap.values()].sort((a, b) => b.revenue - a.revenue);
+  const topProducts = productStats.slice(0, 10).map(({ name, quantity }) => ({ name, quantity }));
+
+  const totalRevenue = sales.reduce((sum, sale) => sum + sale.grandTotal, 0);
+  const totalItems = sales.reduce((sum, sale) => sum + sale.items.length, 0);
+
+  return {
+    revenueByDate,
+    salesCount,
+    topProducts,
+    lowStockCount: lowStock,
+    lowStockAnalytics: [
+      { name: 'Low Stock', value: lowStock, fill: '#ef4444' },
+      { name: 'Sufficient', value: sufficientStock, fill: '#10b981' },
+    ],
+    productStats,
+    summary: {
+      totalSales: sales.length,
+      totalRevenue,
+      totalItems,
+      averageOrderValue: sales.length > 0 ? totalRevenue / sales.length : 0,
+    },
+  };
+}
 
 exports.getReports = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    
-    let matchQuery = {};
-    if (startDate && endDate) {
-      matchQuery.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
-      };
-    } else {
-      // Default to last 30 days
-      const defaultStart = new Date();
-      defaultStart.setHours(0,0,0,0);
-      defaultStart.setDate(defaultStart.getDate() - 30);
-      matchQuery.date = { $gte: defaultStart };
-    }
-
-    // 1. Revenue and Sales by Date
-    const dailyAnalytics = await Sale.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
-          revenue: { $sum: '$grandTotal' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    const revenueByDate = dailyAnalytics.map(day => ({
-      date: day._id,
-      revenue: parseFloat(day.revenue.toFixed(2))
-    }));
-
-    const salesCount = dailyAnalytics.map(day => ({
-      date: day._id,
-      count: day.count
-    }));
-
-    // 2. Top Selling Products
-    const topProducts = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' }
-        }
-      },
-      { $sort: { quantity: -1 } },
-      { $limit: 10 },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1
-        }
-      }
-    ]);
-
-    // 3. Low Stock Analytics
-    const inventory = await Inventory.find({ isActive: true });
-    let lowStock = 0;
-    let sufficientStock = 0;
-
-    inventory.forEach(item => {
-      const minStock = item.minimumStockLevel || 50;
-      if (item.quantity < minStock) {
-        lowStock++;
-      } else {
-        sufficientStock++;
-      }
-    });
-
-    const lowStockAnalytics = [
-      { name: 'Low Stock', value: lowStock, fill: '#ef4444' }, // red-500
-      { name: 'Sufficient', value: sufficientStock, fill: '#10b981' } // emerald-500
-    ];
-
-    // 4. Complete Product Stats (for detailed view)
-    const productStats = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' },
-          revenue: { $sum: '$items.itemTotal' }
-        }
-      },
-      { $sort: { revenue: -1 } },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1,
-          revenue: 1
-        }
-      }
-    ]);
-
-    // 5. Summary Metrics
-    const summaryAgg = await Sale.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: 1 },
-          totalRevenue: { $sum: '$grandTotal' },
-          totalItems: { $sum: { $size: '$items' } }
-        }
-      }
-    ]);
-    
-    const summaryData = summaryAgg[0] || { totalSales: 0, totalRevenue: 0, totalItems: 0 };
-    const averageOrderValue = summaryData.totalSales > 0 ? (summaryData.totalRevenue / summaryData.totalSales) : 0;
+    const { startDate, endDate } = buildDateRange(req.query.startDate, req.query.endDate);
+    const sales = await getSales({ startDate, endDate, limit: 5000 });
+    const inventory = await getInventoryItems({ limit: 5000, isActive: true });
 
     res.status(200).json({
       success: true,
-      data: {
-        revenueByDate,
-        salesCount,
-        topProducts,
-        lowStockCount: lowStock,
-        lowStockAnalytics,
-        productStats,
-        summary: {
-          totalSales: summaryData.totalSales,
-          totalRevenue: summaryData.totalRevenue,
-          totalItems: summaryData.totalItems,
-          averageOrderValue: averageOrderValue
-        }
-      }
+      data: buildAnalytics(sales, inventory),
     });
   } catch (error) {
     console.error('Error generating analytics:', error);
@@ -146,62 +89,26 @@ exports.getReports = async (req, res) => {
 
 exports.downloadReportExcel = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    let matchQuery = {};
-    if (startDate && endDate) {
-      matchQuery.date = { 
-        $gte: new Date(startDate), 
-        $lte: new Date(endDate) 
-      };
-    } else {
-      const defaultStart = new Date();
-      defaultStart.setHours(0,0,0,0);
-      defaultStart.setDate(defaultStart.getDate() - 30);
-      matchQuery.date = { $gte: defaultStart };
-    }
-
-    const productStats = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.displayName', 
-          quantity: { $sum: '$items.quantity' },
-          revenue: { $sum: '$items.itemTotal' }
-        }
-      },
-      { $sort: { revenue: -1 } },
-      { 
-        $project: {
-          _id: 0,
-          name: { $ifNull: ['$_id', 'Unknown'] },
-          quantity: 1,
-          revenue: 1
-        }
-      }
-    ]);
+    const { startDate, endDate } = buildDateRange(req.query.startDate, req.query.endDate);
+    const sales = await getSales({ startDate, endDate, limit: 5000 });
+    const inventory = await getInventoryItems({ limit: 5000, isActive: true });
+    const analytics = buildAnalytics(sales, inventory);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sales Report');
-
     worksheet.columns = [
       { header: 'Product Name', key: 'name', width: 45 },
       { header: 'Quantity Sold', key: 'quantity', width: 20 },
-      { header: 'Total Revenue', key: 'revenue', width: 20 }
+      { header: 'Total Revenue', key: 'revenue', width: 20 },
     ];
     worksheet.getRow(1).font = { bold: true };
 
-    productStats.forEach(stat => {
-      worksheet.addRow({
-        name: stat.name,
-        quantity: stat.quantity,
-        revenue: stat.revenue
-      });
+    analytics.productStats.forEach((stat) => {
+      worksheet.addRow(stat);
     });
 
     res.setHeader('Content-Disposition', 'attachment; filename=sales_report.xlsx');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {

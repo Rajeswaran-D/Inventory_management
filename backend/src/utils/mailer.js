@@ -9,13 +9,15 @@ const transporter = nodemailer.createTransport({
 });
 
 // Verify connection configuration
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ Mailer connection error:', error.message);
-  } else {
-    console.log('✅ Mailer is ready to send emails');
-  }
-});
+if (process.env.EMAIL_USER && process.env.EMAIL_USER !== 'your_gmail@gmail.com') {
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ Mailer connection error:', error.message);
+    } else {
+      console.log('✅ Mailer is ready to send emails');
+    }
+  });
+}
 
 /**
  * Send a password reset email.

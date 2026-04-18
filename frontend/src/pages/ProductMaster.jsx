@@ -6,6 +6,7 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { AddProductVariantModal } from '../components/ui/AddProductVariantModal';
 import { EditProductVariantModal } from '../components/ui/EditProductVariantModal';
 import { DeleteProductVariantModal } from '../components/ui/DeleteProductVariantModal';
+import { EditProductMasterModal } from '../components/ui/EditProductMasterModal';
 
 /**
  * PRODUCT MASTER PAGE
@@ -30,6 +31,14 @@ export const ProductMaster = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedVariantForEdit, setSelectedVariantForEdit] = useState(null);
   const [selectedVariantForDelete, setSelectedVariantForDelete] = useState(null);
+
+  // Product Master specific states
+  const [showEditProductModal, setShowEditProductModal] = useState(false);
+  const [showDeleteProductConfirm, setShowDeleteProductConfirm] = useState(false);
+  const [productToManage, setProductToManage] = useState(null);
+  
+  // State for top-bar selected product
+  const [topSelectedProductId, setTopSelectedProductId] = useState('');
 
   // Expandable sections state
   const [expandedProducts, setExpandedProducts] = useState(new Set());
@@ -161,6 +170,26 @@ export const ProductMaster = () => {
     }
   };
 
+  // Delete product type
+  const handleDeleteProductType = async () => {
+    if (!productToManage) return;
+
+    try {
+      setIsSubmitting(true);
+      await productService.deleteProduct(productToManage._id);
+      toast.success('✅ Product type deleted successfully');
+      setShowDeleteProductConfirm(false);
+      setProductToManage(null);
+      setTopSelectedProductId('');
+      await fetchProducts(true);
+    } catch (err) {
+      console.error('Error deleting product type:', err);
+      toast.error(err?.response?.data?.message || 'Failed to delete product type');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
@@ -184,15 +213,65 @@ export const ProductMaster = () => {
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => fetchProducts(true)}
-          disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 active:scale-95"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex gap-3">
+          <button
+            onClick={() => fetchProducts(true)}
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 active:scale-95"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        {/* Top-Right Update & Delete Options */}
+        <div className="flex items-center gap-3">
+          <select
+            className="border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 min-w-[200px]"
+            value={topSelectedProductId}
+            onChange={(e) => setTopSelectedProductId(e.target.value)}
+          >
+            <option value="">-- Select Product --</option>
+            {products.map(p => (
+              <option key={p._id} value={p._id}>{p.name}</option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => {
+              const p = products.find(prod => prod._id === topSelectedProductId);
+              if (p) {
+                setProductToManage(p);
+                setShowEditProductModal(true);
+              } else {
+                toast.error("Please select a product first");
+              }
+            }}
+            disabled={!topSelectedProductId}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hover:shadow"
+          >
+            <Edit2 className="w-4 h-4" />
+            Update
+          </button>
+
+          <button
+            onClick={() => {
+              const p = products.find(prod => prod._id === topSelectedProductId);
+              if (p) {
+                setProductToManage(p);
+                setShowDeleteProductConfirm(true);
+              } else {
+                toast.error("Please select a product first");
+              }
+            }}
+            disabled={!topSelectedProductId}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm hover:shadow"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
       </div>
 
       {/* Loading State */}
@@ -220,7 +299,6 @@ export const ProductMaster = () => {
                     <div className="flex gap-2 text-xs">
                       {product.hasGSM && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">GSM</span>}
                       {product.hasSize && <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Size</span>}
-                      {product.hasColor && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">Color</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -371,6 +449,37 @@ export const ProductMaster = () => {
           setSelectedVariantForDelete(null);
           setSelectedProduct(null);
           fetchProducts(false);
+        }}
+      />
+
+      {/* Edit Product Master Modal */}
+      <EditProductMasterModal
+        isOpen={showEditProductModal}
+        onClose={() => {
+          setShowEditProductModal(false);
+          setProductToManage(null);
+        }}
+        product={productToManage}
+        onProductUpdated={() => {
+          setShowEditProductModal(false);
+          setProductToManage(null);
+          fetchProducts(false);
+        }}
+      />
+
+      {/* Delete Product Master Confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteProductConfirm}
+        title="Delete Product Type"
+        message={`Are you sure you want to delete "${productToManage?.name || 'this product'}"? This action will hide the product type but variants might need to be deleted manually if not cascading.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={isSubmitting}
+        onConfirm={handleDeleteProductType}
+        onCancel={() => {
+          setShowDeleteProductConfirm(false);
+          setProductToManage(null);
         }}
       />
 

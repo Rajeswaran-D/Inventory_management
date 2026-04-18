@@ -1,116 +1,221 @@
-/**
- * Pricing Tier Controller
- * 
- * Manages pricing tiers for volume-based, customer-based, and seasonal pricing
- */
+const { query, withTransaction } = require('../lib/db');
+const { createId } = require('../lib/ids');
 
-const PricingTier = require('../models/PricingTier');
+function calculatePriceForTier(basePrice, tier) {
+  if (!tier) {
+    return basePrice;
+  }
+  if (tier.discountType === 'percentage') {
+    return basePrice * (1 - (tier.discountValue / 100));
+  }
+  if (tier.discountType === 'fixed') {
+    return Math.max(0, basePrice - tier.discountValue);
+  }
+  return basePrice;
+}
 
-// ============= GET OPERATIONS =============
+async function getTierRelations(tierId) {
+  const [products, variants] = await Promise.all([
+    query(
+      `
+        SELECT p.id, p.name
+        FROM pricing_tier_products t
+        JOIN product_masters p ON p.id = t.product_id
+        WHERE t.tier_id = $1
+      `,
+      [tierId]
+    ),
+    query(
+      `
+        SELECT v.id, v.display_name, v.sku
+        FROM pricing_tier_variants t
+        JOIN product_variants v ON v.id = t.variant_id
+        WHERE t.tier_id = $1
+      `,
+      [tierId]
+    ),
+  ]);
 
-/**
- * Get all pricing tiers with filtering and pagination
- */
-exports.getAllTiers = async (req, res) => {
-  try {
-    console.log('💰 Fetching all pricing tiers');
-    
-    const { tierType, customerType, isActive, search } = req.query;
-    const query = {};
+  return {
+    applicableProducts: products.rows.map((row) => ({ _id: row.id, name: row.name })),
+    applicableVariants: variants.rows.map((row) => ({ _id: row.id, displayName: row.display_name, sku: row.sku })),
+  };
+}
 
-    if (tierType) query.tierType = tierType;
-    if (customerType) query.customerType = customerType;
-    if (isActive !== undefined) query.isActive = isActive === 'true';
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
+async function mapTier(row) {
+  const relations = await getTierRelations(row.id);
+  return {
+    _id: row.id,
+    name: row.name,
+    description: row.description,
+    tierType: row.tier_type,
+    minQuantity: row.min_quantity,
+    maxQuantity: row.max_quantity,
+    customerType: row.customer_type,
+    discountType: row.discount_type,
+    discountValue: Number(row.discount_value),
+    markup: Number(row.markup),
+    startDate: row.start_date,
+    endDate: row.end_date,
+    priority: row.priority,
+    isActive: row.is_active,
+    appliedCount: row.applied_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...relations,
+  };
+}
+
+async function getApplicableTierRow({ quantity = 0, customerType = null, productId = null, variantId = null }) {
+  const rows = await query(
+    `
+      SELECT *
+      FROM pricing_tiers
+      WHERE is_active = TRUE
+      ORDER BY priority DESC, created_at DESC
+    `
+  );
+
+  for (const row of rows.rows) {
+    const startOk = !row.start_date || new Date(row.start_date) <= new Date();
+    const endOk = !row.end_date || new Date(row.end_date) >= new Date();
+    if (!startOk || !endOk) {
+      continue;
     }
 
-    const tiers = await PricingTier.find(query)
-      .populate('applicableProducts', 'name')
-      .populate('applicableVariants', 'displayName sku')
-      .sort({ tierType: 1, priority: -1 })
-      .lean();
+    if (row.tier_type === 'volume') {
+      const minOk = quantity >= row.min_quantity;
+      const maxOk = row.max_quantity === null || quantity <= row.max_quantity;
+      if (minOk && maxOk) {
+        return row;
+      }
+    }
 
-    res.json({ 
-      data: tiers,
-      total: tiers.length 
-    });
+    if (row.tier_type === 'customer' && customerType && row.customer_type === customerType) {
+      return row;
+    }
+
+    if (row.tier_type === 'product') {
+      const products = await query('SELECT product_id FROM pricing_tier_products WHERE tier_id = $1', [row.id]);
+      const variants = await query('SELECT variant_id FROM pricing_tier_variants WHERE tier_id = $1', [row.id]);
+      const productIds = products.rows.map((item) => item.product_id);
+      const variantIds = variants.rows.map((item) => item.variant_id);
+
+      if ((productIds.length === 0 && variantIds.length === 0) ||
+        (productId && productIds.includes(productId)) ||
+        (variantId && variantIds.includes(variantId))) {
+        return row;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function syncTierRelations(client, tierId, productIds = [], variantIds = []) {
+  await query('DELETE FROM pricing_tier_products WHERE tier_id = $1', [tierId], client);
+  await query('DELETE FROM pricing_tier_variants WHERE tier_id = $1', [tierId], client);
+
+  for (const productId of productIds) {
+    await query(
+      'INSERT INTO pricing_tier_products (tier_id, product_id) VALUES ($1, $2)',
+      [tierId, productId],
+      client
+    );
+  }
+  for (const variantId of variantIds) {
+    await query(
+      'INSERT INTO pricing_tier_variants (tier_id, variant_id) VALUES ($1, $2)',
+      [tierId, variantId],
+      client
+    );
+  }
+}
+
+exports.getAllTiers = async (req, res) => {
+  try {
+    const params = [];
+    const clauses = [];
+    if (req.query.tierType) {
+      params.push(req.query.tierType);
+      clauses.push(`tier_type = $${params.length}`);
+    }
+    if (req.query.customerType) {
+      params.push(req.query.customerType);
+      clauses.push(`customer_type = $${params.length}`);
+    }
+    if (req.query.isActive !== undefined) {
+      params.push(req.query.isActive === 'true');
+      clauses.push(`is_active = $${params.length}`);
+    }
+    if (req.query.search) {
+      params.push(`%${req.query.search.toLowerCase()}%`);
+      clauses.push(`LOWER(name) LIKE $${params.length}`);
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const tiers = await query(
+      `
+        SELECT *
+        FROM pricing_tiers
+        ${where}
+        ORDER BY tier_type ASC, priority DESC
+      `,
+      params
+    );
+
+    const data = [];
+    for (const row of tiers.rows) {
+      data.push(await mapTier(row));
+    }
+
+    res.json({ data, total: data.length });
   } catch (err) {
-    console.error('❌ Error fetching tiers:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Get tier by ID
- */
 exports.getTierById = async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log(`💰 Fetching tier: ${id}`);
-
-    const tier = await PricingTier.findById(id)
-      .populate('applicableProducts', 'name')
-      .populate('applicableVariants', 'displayName sku');
-
-    if (!tier) return res.status(404).json({ error: 'Tier not found' });
-
-    res.json({ data: tier });
+    const tier = await query('SELECT * FROM pricing_tiers WHERE id = $1 LIMIT 1', [req.params.id]);
+    if (tier.rowCount === 0) {
+      return res.status(404).json({ error: 'Tier not found' });
+    }
+    res.json({ data: await mapTier(tier.rows[0]) });
   } catch (err) {
-    console.error('❌ Error fetching tier:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Get applicable tier for conditions (quantity, customer type, etc.)
- */
 exports.getApplicableTier = async (req, res) => {
   try {
-    const { quantity = 0, customerType = null, productId = null, variantId = null } = req.query;
-    console.log(`💰 Finding applicable tier for: qty=${quantity}, customer=${customerType}`);
-
-    const tier = await PricingTier.getApplicableTier({
-      quantity: parseInt(quantity),
-      customerType,
-      productId,
-      variantId
+    const row = await getApplicableTierRow({
+      quantity: parseInt(req.query.quantity || 0, 10),
+      customerType: req.query.customerType || null,
+      productId: req.query.productId || null,
+      variantId: req.query.variantId || null,
     });
-
-    res.json({ data: tier });
+    res.json({ data: row ? await mapTier(row) : null });
   } catch (err) {
-    console.error('❌ Error finding applicable tier:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Get pricing analysis for a price with applicable tiers
- */
 exports.calculateTieredPrice = async (req, res) => {
   try {
-    const { basePrice, quantity = 0, customerType = null } = req.body;
-    console.log(`💰 Calculating tiered price: ₹${basePrice} for qty=${quantity}`);
-
+    const basePrice = Number(req.body.basePrice);
     if (!basePrice) {
       return res.status(400).json({ error: 'basePrice is required' });
     }
 
-    const tier = await PricingTier.getApplicableTier({
-      quantity: parseInt(quantity),
-      customerType
+    const row = await getApplicableTierRow({
+      quantity: parseInt(req.body.quantity || 0, 10),
+      customerType: req.body.customerType || null,
+      productId: req.body.productId || null,
+      variantId: req.body.variantId || null,
     });
-
-    // Calculate price based on tier
-    let finalPrice = basePrice;
-    if (tier) {
-      if (tier.discountType === 'percentage') {
-        finalPrice = basePrice * (1 - (tier.discountValue / 100));
-      } else if (tier.discountType === 'fixed') {
-        finalPrice = Math.max(0, basePrice - tier.discountValue);
-      }
-    }
-
+    const tier = row ? await mapTier(row) : null;
+    const finalPrice = calculatePriceForTier(basePrice, tier);
     const savings = basePrice - finalPrice;
 
     res.json({
@@ -120,218 +225,246 @@ exports.calculateTieredPrice = async (req, res) => {
           id: tier._id,
           name: tier.name,
           discountType: tier.discountType,
-          discountValue: tier.discountValue
+          discountValue: tier.discountValue,
         } : null,
         finalPrice,
         savings,
-        savingsPercentage: basePrice > 0 ? ((savings / basePrice) * 100).toFixed(2) : 0
-      }
+        savingsPercentage: basePrice > 0 ? ((savings / basePrice) * 100).toFixed(2) : 0,
+      },
     });
   } catch (err) {
-    console.error('❌ Error calculating price:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-// ============= CREATE OPERATIONS =============
-
-/**
- * Create new pricing tier
- */
 exports.createTier = async (req, res) => {
   try {
-    console.log('📝 Creating new pricing tier');
-    const tier = new PricingTier(req.body);
-    await tier.save();
-    console.log(`✅ Tier created: ${tier.name}`);
+    const tierId = createId();
+    await withTransaction(async (client) => {
+      await query(
+        `
+          INSERT INTO pricing_tiers (
+            id, name, description, tier_type, min_quantity, max_quantity, customer_type,
+            discount_type, discount_value, markup, start_date, end_date, priority, is_active, applied_count
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0)
+        `,
+        [
+          tierId,
+          req.body.name,
+          req.body.description || '',
+          req.body.tierType || 'volume',
+          Number(req.body.minQuantity || 0),
+          req.body.maxQuantity ?? null,
+          req.body.customerType || null,
+          req.body.discountType || 'percentage',
+          Number(req.body.discountValue || 0),
+          Number(req.body.markup || 0),
+          req.body.startDate || null,
+          req.body.endDate || null,
+          Number(req.body.priority || 100),
+          req.body.isActive !== undefined ? Boolean(req.body.isActive) : true,
+        ],
+        client
+      );
 
-    res.status(201).json({ 
-      data: tier,
-      message: 'Pricing tier created successfully' 
+      await syncTierRelations(client, tierId, req.body.applicableProducts || [], req.body.applicableVariants || []);
     });
+
+    const tier = await query('SELECT * FROM pricing_tiers WHERE id = $1 LIMIT 1', [tierId]);
+    res.status(201).json({ data: await mapTier(tier.rows[0]), message: 'Pricing tier created successfully' });
   } catch (err) {
-    console.error('❌ Error creating tier:', err.message);
     res.status(400).json({ error: err.message });
   }
 };
 
-/**
- * Create bulk pricing tiers
- */
 exports.createBulkTiers = async (req, res) => {
   try {
-    const { tiers } = req.body;
+    const tiers = req.body.tiers;
     if (!Array.isArray(tiers) || tiers.length === 0) {
       return res.status(400).json({ error: 'tiers array is required' });
     }
 
-    console.log(`📝 Creating ${tiers.length} pricing tiers`);
-    const created = await PricingTier.insertMany(tiers);
-    console.log(`✅ Created ${created.length} tiers`);
+    const created = [];
+    for (const tier of tiers) {
+      const tierId = createId();
+      await query(
+        `
+          INSERT INTO pricing_tiers (
+            id, name, description, tier_type, min_quantity, max_quantity, customer_type,
+            discount_type, discount_value, markup, start_date, end_date, priority, is_active, applied_count
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0)
+        `,
+        [
+          tierId,
+          tier.name,
+          tier.description || '',
+          tier.tierType || 'volume',
+          Number(tier.minQuantity || 0),
+          tier.maxQuantity ?? null,
+          tier.customerType || null,
+          tier.discountType || 'percentage',
+          Number(tier.discountValue || 0),
+          Number(tier.markup || 0),
+          tier.startDate || null,
+          tier.endDate || null,
+          Number(tier.priority || 100),
+          tier.isActive !== undefined ? Boolean(tier.isActive) : true,
+        ]
+      );
+      const row = await query('SELECT * FROM pricing_tiers WHERE id = $1 LIMIT 1', [tierId]);
+      created.push(await mapTier(row.rows[0]));
+    }
 
-    res.status(201).json({ 
-      data: created,
-      message: `${created.length} pricing tiers created successfully` 
-    });
+    res.status(201).json({ data: created, message: `${created.length} pricing tiers created successfully` });
   } catch (err) {
-    console.error('❌ Error creating bulk tiers:', err.message);
     res.status(400).json({ error: err.message });
   }
 };
 
-// ============= UPDATE OPERATIONS =============
-
-/**
- * Update pricing tier
- */
 exports.updateTier = async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log(`✏️  Updating tier: ${id}`);
+    await withTransaction(async (client) => {
+      const existing = await query('SELECT * FROM pricing_tiers WHERE id = $1 LIMIT 1', [req.params.id], client);
+      if (existing.rowCount === 0) {
+        throw new Error('Tier not found');
+      }
+      const current = existing.rows[0];
 
-    const tier = await PricingTier.findByIdAndUpdate(
-      id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+      await query(
+        `
+          UPDATE pricing_tiers
+          SET
+            name = COALESCE($1, name),
+            description = COALESCE($2, description),
+            tier_type = COALESCE($3, tier_type),
+            min_quantity = COALESCE($4, min_quantity),
+            max_quantity = $5,
+            customer_type = $6,
+            discount_type = COALESCE($7, discount_type),
+            discount_value = COALESCE($8, discount_value),
+            markup = COALESCE($9, markup),
+            start_date = $10,
+            end_date = $11,
+            priority = COALESCE($12, priority),
+            is_active = COALESCE($13, is_active),
+            updated_at = NOW()
+          WHERE id = $14
+        `,
+        [
+          req.body.name || null,
+          req.body.description || null,
+          req.body.tierType || null,
+          req.body.minQuantity !== undefined ? Number(req.body.minQuantity) : null,
+          req.body.maxQuantity !== undefined ? req.body.maxQuantity : current.max_quantity,
+          req.body.customerType !== undefined ? req.body.customerType : current.customer_type,
+          req.body.discountType || null,
+          req.body.discountValue !== undefined ? Number(req.body.discountValue) : null,
+          req.body.markup !== undefined ? Number(req.body.markup) : null,
+          req.body.startDate !== undefined ? req.body.startDate : current.start_date,
+          req.body.endDate !== undefined ? req.body.endDate : current.end_date,
+          req.body.priority !== undefined ? Number(req.body.priority) : null,
+          req.body.isActive !== undefined ? Boolean(req.body.isActive) : null,
+          req.params.id,
+        ],
+        client
+      );
 
-    if (!tier) return res.status(404).json({ error: 'Tier not found' });
-
-    console.log(`✅ Tier updated: ${tier.name}`);
-    res.json({ 
-      data: tier,
-      message: 'Pricing tier updated successfully' 
+      if (req.body.applicableProducts || req.body.applicableVariants) {
+        await syncTierRelations(client, req.params.id, req.body.applicableProducts || [], req.body.applicableVariants || []);
+      }
     });
+
+    const tier = await query('SELECT * FROM pricing_tiers WHERE id = $1 LIMIT 1', [req.params.id]);
+    res.json({ data: await mapTier(tier.rows[0]), message: 'Pricing tier updated successfully' });
   } catch (err) {
-    console.error('❌ Error updating tier:', err.message);
-    res.status(400).json({ error: err.message });
+    res.status(err.message === 'Tier not found' ? 404 : 400).json({ error: err.message });
   }
 };
 
-/**
- * Activate/Deactivate tier
- */
 exports.toggleTierStatus = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { isActive } = req.body;
-    console.log(`⚡ Toggling tier status: ${id} -> ${isActive}`);
-
-    const tier = await PricingTier.findByIdAndUpdate(
-      id,
-      { isActive },
-      { new: true }
+    const tier = await query(
+      `
+        UPDATE pricing_tiers
+        SET is_active = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING *
+      `,
+      [Boolean(req.body.isActive), req.params.id]
     );
 
-    if (!tier) return res.status(404).json({ error: 'Tier not found' });
+    if (tier.rowCount === 0) {
+      return res.status(404).json({ error: 'Tier not found' });
+    }
 
-    console.log(`✅ Tier status updated: ${tier.name} -> ${isActive ? 'Active' : 'Inactive'}`);
-    res.json({ 
-      data: tier,
-      message: `Pricing tier ${isActive ? 'activated' : 'deactivated'}` 
+    res.json({
+      data: await mapTier(tier.rows[0]),
+      message: `Pricing tier ${req.body.isActive ? 'activated' : 'deactivated'}`,
     });
   } catch (err) {
-    console.error('❌ Error toggling status:', err.message);
     res.status(400).json({ error: err.message });
   }
 };
 
-// ============= DELETE OPERATIONS =============
-
-/**
- * Delete pricing tier
- */
 exports.deleteTier = async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log(`🗑️  Deleting tier: ${id}`);
-
-    const tier = await PricingTier.findByIdAndDelete(id);
-
-    if (!tier) return res.status(404).json({ error: 'Tier not found' });
-
-    console.log(`✅ Tier deleted: ${tier.name}`);
-    res.json({ 
-      message: 'Pricing tier deleted successfully',
-      deletedId: id
-    });
+    const tier = await query('DELETE FROM pricing_tiers WHERE id = $1 RETURNING *', [req.params.id]);
+    if (tier.rowCount === 0) {
+      return res.status(404).json({ error: 'Tier not found' });
+    }
+    res.json({ message: 'Pricing tier deleted successfully', deletedId: req.params.id });
   } catch (err) {
-    console.error('❌ Error deleting tier:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-// ============= ANALYTICS =============
-
-/**
- * Get pricing tier statistics
- */
 exports.getTierStats = async (req, res) => {
   try {
-    console.log('📊 Calculating tier statistics');
-
-    const tiers = await PricingTier.find({ isActive: true }).lean();
+    const tiers = await query('SELECT * FROM pricing_tiers WHERE is_active = TRUE');
     const stats = {
-      totalTiers: tiers.length,
+      totalTiers: tiers.rowCount,
       byType: {},
       byDiscountType: {},
       averageDiscount: 0,
-      maxDiscount: 0
+      maxDiscount: 0,
     };
 
     let totalDiscount = 0;
-
-    for (const tier of tiers) {
-      // By type
-      stats.byType[tier.tierType] = (stats.byType[tier.tierType] || 0) + 1;
-
-      // By discount type
-      stats.byDiscountType[tier.discountType] = (stats.byDiscountType[tier.discountType] || 0) + 1;
-
-      // Calculate averages
-      if (tier.discountType === 'percentage') {
-        totalDiscount += tier.discountValue;
-        stats.maxDiscount = Math.max(stats.maxDiscount, tier.discountValue);
+    for (const tier of tiers.rows) {
+      stats.byType[tier.tier_type] = (stats.byType[tier.tier_type] || 0) + 1;
+      stats.byDiscountType[tier.discount_type] = (stats.byDiscountType[tier.discount_type] || 0) + 1;
+      if (tier.discount_type === 'percentage') {
+        totalDiscount += Number(tier.discount_value);
+        stats.maxDiscount = Math.max(stats.maxDiscount, Number(tier.discount_value));
       }
     }
 
-    stats.averageDiscount = tiers.length > 0 ? (totalDiscount / tiers.length).toFixed(2) : 0;
-
-    console.log(`📊 Stats: ${stats.totalTiers} tiers, avg discount: ${stats.averageDiscount}%`);
+    stats.averageDiscount = tiers.rowCount > 0 ? (totalDiscount / tiers.rowCount).toFixed(2) : 0;
     res.json({ data: stats });
   } catch (err) {
-    console.error('❌ Error calculating stats:', err.message);
     res.status(500).json({ error: err.message });
   }
 };
 
-/**
- * Get tier usage report
- */
 exports.getTierUsageReport = async (req, res) => {
   try {
-    console.log('📋 Generating tier usage report');
-
-    const tiers = await PricingTier.find()
-      .sort({ appliedCount: -1 })
-      .lean();
-
+    const tiers = await query('SELECT * FROM pricing_tiers ORDER BY applied_count DESC, priority DESC');
     const report = {
-      totalTiers: tiers.length,
-      activeTiers: tiers.filter(t => t.isActive).length,
-      totalApplications: tiers.reduce((sum, t) => sum + t.appliedCount, 0),
-      tiersByUsage: tiers.map(t => ({
-        name: t.name,
-        tierType: t.tierType,
-        appliedCount: t.appliedCount,
-        discount: `${t.discountValue}${t.discountType === 'percentage' ? '%' : '₹'}`,
-        isActive: t.isActive
-      }))
+      totalTiers: tiers.rowCount,
+      activeTiers: tiers.rows.filter((tier) => tier.is_active).length,
+      totalApplications: tiers.rows.reduce((sum, tier) => sum + tier.applied_count, 0),
+      tiersByUsage: tiers.rows.map((tier) => ({
+        name: tier.name,
+        tierType: tier.tier_type,
+        appliedCount: tier.applied_count,
+        discount: `${tier.discount_value}${tier.discount_type === 'percentage' ? '%' : 'INR'}`,
+        isActive: tier.is_active,
+      })),
     };
-
     res.json({ data: report });
   } catch (err) {
-    console.error('❌ Error generating report:', err.message);
     res.status(500).json({ error: err.message });
   }
 };

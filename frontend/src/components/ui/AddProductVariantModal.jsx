@@ -37,12 +37,9 @@ export const AddProductVariantModal = ({ isOpen, onClose, onProductAdded, produc
     setError('');
   };
 
-  const isVibhoothi = product?.name?.toLowerCase().includes('vibhoothi');
-  const isCloth = product?.name?.toLowerCase().includes('cloth');
-
-  const showSize = !isVibhoothi; 
-  const showGSM = !isVibhoothi && !isCloth; 
-  const showColor = product?.hasColor || isVibhoothi;
+  const showSize = product?.hasSize;
+  const showGSM = product?.hasGSM;
+  const showColor = product?.hasColor;
 
   const validateForm = () => {
     if (!product) return false;
@@ -76,9 +73,9 @@ export const AddProductVariantModal = ({ isOpen, onClose, onProductAdded, produc
       const variantData = {
         productId: product._id,
         productName: product.name,
-        size: showSize ? formData.size : null,
-        gsm: showGSM ? parseInt(formData.gsm) : null,
-        color: showColor ? formData.color : null,
+        size: showSize ? (formData.size.trim() || null) : null,
+        gsm: showGSM ? (formData.gsm !== '' ? Number(formData.gsm) : null) : null,
+        color: showColor ? (formData.color.trim() || null) : null,
         price: parseFloat(formData.price) || 0
       };
 
@@ -216,8 +213,8 @@ export const AddProductVariantModal = ({ isOpen, onClose, onProductAdded, produc
                   className="flex-1 px-3 py-2 rounded-md border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 font-medium text-gray-800"
                 >
                   <option value="">Select Color...</option>
-                  {product.colorOptions?.map(color => (
-                    <option key={color} value={color}>{color}</option>
+                  {product.colorOptions?.map(c => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
                 <input
@@ -232,7 +229,7 @@ export const AddProductVariantModal = ({ isOpen, onClose, onProductAdded, produc
             </div>
           )}
 
-          <div>
+<div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
               💰 Initial Price (₹) *
             </label>

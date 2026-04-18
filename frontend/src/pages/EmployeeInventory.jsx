@@ -27,8 +27,7 @@ const EmployeeInventory = () => {
         ${variant.displayName || ''} 
         ${productMaster.name || ''} 
         ${variant.size || ''} 
-        ${variant.gsm || ''} 
-        ${variant.color || ''}
+        ${variant.gsm || ''}
       `.toLowerCase();
       return searchStr.includes(lowerQuery);
     });
@@ -41,7 +40,7 @@ const EmployeeInventory = () => {
       setLoading(true);
       setError(null);
       
-      const res = await inventoryService.getAll({});
+      const res = await inventoryService.getAll({ limit: 1000 });
       let productsData = Array.isArray(res.data) ? res.data : res.data?.data || [];
       
       setProducts(productsData);
@@ -215,51 +214,45 @@ const EmployeeInventory = () => {
                   return (
                     <div 
                       key={product._id} 
-                      className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 transform hover:-translate-y-1 border-l-4 ${status.border} p-5 flex flex-col justify-between h-full`}
+                      className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 transform hover:-translate-y-1 border-l-4 ${status.border} p-5 flex flex-col justify-between h-full overflow-hidden`}
                     >
                       {/* Card Header */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg sm:text-xl truncate pr-2">
+                      <div className="flex justify-between items-start gap-2 mb-4 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-gray-900 text-base sm:text-lg break-words leading-snug">
                             {variant.displayName || 'Unnamed Variant'}
                           </h3>
                         </div>
-                        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold shrink-0 ${status.bg} ${status.color}`}>
+                        <span className={`inline-flex flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap ${status.bg} ${status.color}`}>
                           {status.label}
                         </span>
                       </div>
 
                       {/* Card Details */}
-                      <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                      <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-100">
                         {variant.size && (
-                          <div className="flex flex-col">
-                            <span className="text-xs uppercase font-semibold text-gray-400">Size</span>
-                            <span className="font-medium text-gray-800">{variant.size}</span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs uppercase font-semibold text-gray-400 mb-0.5">Size</span>
+                            <span className="font-medium text-gray-800 break-words">{variant.size}</span>
                           </div>
                         )}
                         {variant.gsm && (
-                          <div className="flex flex-col">
-                            <span className="text-xs uppercase font-semibold text-gray-400">GSM</span>
-                            <span className="font-medium text-gray-800">{variant.gsm} GSM</span>
-                          </div>
-                        )}
-                        {variant.color && (
-                          <div className="flex flex-col">
-                            <span className="text-xs uppercase font-semibold text-gray-400">Color</span>
-                            <span className="font-medium text-gray-800">{variant.color}</span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs uppercase font-semibold text-gray-400 mb-0.5">GSM</span>
+                            <span className="font-medium text-gray-800 break-words">{variant.gsm} GSM</span>
                           </div>
                         )}
                       </div>
 
                       {/* Card Footer (Quantity and Price) */}
-                      <div className="flex items-end justify-between mt-auto pt-4 border-t border-gray-100">
-                        <div>
+                      <div className="flex items-end justify-between gap-2 mt-auto pt-4 border-t border-gray-100 min-w-0">
+                        <div className="min-w-0">
                           <p className="text-xs uppercase font-semibold text-gray-400 mb-1">Stock Level</p>
-                          <p className={`text-2xl font-black ${qty > 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                            {qty.toLocaleString()} <span className="text-sm font-medium text-gray-500">units</span>
+                          <p className={`text-xl font-black leading-tight ${qty > 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            {qty.toLocaleString()}{' '}<span className="text-sm font-medium text-gray-500">units</span>
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex-shrink-0">
                           <p className="text-xs uppercase font-semibold text-gray-400 mb-1">Unit Price</p>
                           <p className="text-lg font-bold text-blue-600">
                             ₹{(product.price || 0).toFixed(2)}

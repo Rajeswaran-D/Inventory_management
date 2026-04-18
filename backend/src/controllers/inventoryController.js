@@ -1,44 +1,18 @@
-/**
- * SIMPLIFIED PRODUCT & INVENTORY CONTROLLER
- * 
- * Handles:
- * - Loading products and inventory
- * - Getting dropdown options
- * - Updating inventory
- */
+const { query } = require('../lib/db');
+const { PRODUCTS } = require('../data/productDefinitions');
+const { getInventoryItems } = require('../lib/store');
 
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const { PRODUCTS, validateSelection } = require('../data/productDefinitions');
-
-// ============================================================================
-// GET PRODUCT DEFINITIONS & DROPDOWNS
-// ============================================================================
-
-/**
- * GET /api/products/definitions
- * Returns all fixed product definitions with specifications
- */
 exports.getProductDefinitions = async (req, res) => {
   try {
-    res.status(200).json({
-      success: true,
-      data: PRODUCTS
-    });
+    res.status(200).json({ success: true, data: PRODUCTS });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * GET /api/products/options/:productId
- * Returns GSM, Size, Color options for a specific product
- */
 exports.getProductOptions = async (req, res) => {
   try {
-    const { productId } = req.params;
-    const product = PRODUCTS[productId.toUpperCase()];
-
+    const product = PRODUCTS[req.params.productId.toUpperCase()];
     if (!product) {
       return res.status(404).json({ success: false, error: 'Product not found' });
     }
@@ -48,71 +22,27 @@ exports.getProductOptions = async (req, res) => {
       data: {
         gsmOptions: product.gsmOptions,
         sizeOptions: product.sizeOptions,
-        colorOptions: product.colorOptions
-      }
+        colorOptions: product.colorOptions,
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// ============================================================================
-// INVENTORY OPERATIONS
-// ============================================================================
-
-/**
- * GET /api/inventory
- * Returns all inventory items with product details
- * Supports search params: ?search=value (searches across all product fields)
- */
 exports.getAllInventory = async (req, res) => {
   try {
-    const { search, limit = 100 } = req.query;
-    
-    let query = { isActive: true };
-
-    // If search param provided, build regex search across all product fields
-    if (search && search.trim()) {
-      const searchRegex = { $regex: search.trim(), $options: 'i' };
-      
-      // First find matching variants
-      const variants = await require('../models/ProductVariant').find({
-        $or: [
-          { displayName: searchRegex },
-          { sku: searchRegex },
-          { size: searchRegex },
-          { color: searchRegex }
-        ]
-      });
-
-      const variantIds = variants.map(v => v._id);
-      query.variantId = { $in: variantIds };
-    }
-
-    const items = await require('../models/Inventory').find(query)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      })
-      .limit(parseInt(limit))
-      .sort({ updatedAt: -1 });
-
-    // Transform data for frontend
-    const transformedItems = items.map(item => ({
-      _id: item._id,
-      quantity: item.quantity,
-      price: item.price,
-      minimumStockLevel: item.minimumStockLevel,
-      isActive: item.isActive,
-      variant: item.variantId,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt
-    }));
+    const { search, limit = 1000 } = req.query;
+    const items = await getInventoryItems({
+      search: search || '',
+      limit: parseInt(limit, 10),
+      isActive: true,
+    });
 
     res.status(200).json({
       success: true,
-      count: transformedItems.length,
-      data: transformedItems
+      count: items.length,
+      data: items,
     });
   } catch (err) {
     console.error('Error fetching inventory:', err);
@@ -120,142 +50,127 @@ exports.getAllInventory = async (req, res) => {
   }
 };
 
-/**
- * GET /api/inventory/:inventoryId
- * Get specific inventory item
- */
 exports.getInventoryById = async (req, res) => {
   try {
-    const item = await Inventory.findById(req.params.inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
-    
+    const [item] = await getInventoryItems({ inventoryId: req.params.inventoryId, isActive: null, limit: 1 });
     if (!item) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
-
-    res.status(200).json({
-      success: true,
-      data: item
-    });
+    res.status(200).json({ success: true, data: item });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * PUT /api/inventory/:inventoryId
- * Update inventory (quantity and price)
- */
 exports.updateInventory = async (req, res) => {
   try {
     const { quantity, price } = req.body;
-
     if (quantity === undefined && price === undefined) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Provide at least quantity or price to update' 
-      });
+      return res.status(400).json({ success: false, error: 'Provide at least quantity or price to update' });
     }
 
-    const updates = {};
-    if (quantity !== undefined) updates.quantity = Math.max(0, quantity);
-    if (price !== undefined) updates.price = Math.max(0, price);
+    const updated = await query(
+      `
+        UPDATE inventory
+        SET
+          quantity = COALESCE($1, quantity),
+          price = COALESCE($2, price),
+          updated_at = NOW()
+        WHERE id = $3
+        RETURNING id
+      `,
+      [
+        quantity !== undefined ? Math.max(0, Number(quantity)) : null,
+        price !== undefined ? Math.max(0, Number(price)) : null,
+        req.params.inventoryId,
+      ]
+    );
 
-    const item = await Inventory.findByIdAndUpdate(
-      req.params.inventoryId,
-      updates,
-      { new: true }
-    ).populate({
-      path: 'variantId',
-      populate: { path: 'productId' }
-    });
-
-    if (!item) {
+    if (updated.rowCount === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
+    const [item] = await getInventoryItems({ inventoryId: req.params.inventoryId, isActive: null, limit: 1 });
     res.status(200).json({
       success: true,
       data: item,
-      message: 'Inventory updated successfully'
+      message: 'Inventory updated successfully',
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * DELETE /api/inventory/:inventoryId
- * Delete inventory item (soft delete)
- */
 exports.deleteInventory = async (req, res) => {
   try {
-    const item = await Inventory.findByIdAndUpdate(
-      req.params.inventoryId,
-      { isActive: false },
-      { new: true }
+    const deleted = await query(
+      `
+        UPDATE inventory
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+      `,
+      [req.params.inventoryId]
     );
 
-    if (!item) {
+    if (deleted.rowCount === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Inventory item deleted successfully'
-    });
+    res.status(200).json({ success: true, message: 'Inventory item deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// ============================================================================
-// SEARCH & FILTERING
-// ============================================================================
-
-/**
- * GET /api/inventory/search
- * Search inventory by product specs
- * ?productName=Maplitho&gsm=80&size=9x6
- */
 exports.searchInventory = async (req, res) => {
   try {
     const { productName, gsm, size, color } = req.query;
-    
-    // Build product filter
-    const productFilter = { isActive: true };
+    const params = [];
+    const clauses = ['i.is_active = TRUE', 'v.is_active = TRUE', 'p.is_active = TRUE'];
 
-    if (productName) productFilter.productName = productName;
-    if (gsm && gsm !== 'null' && gsm !== '') productFilter.gsm = parseInt(gsm);
-    if (size && size !== 'null' && size !== '') productFilter.size = size;
-    if (color && color !== 'null' && color !== '') productFilter.color = color;
+    if (productName) {
+      params.push(productName);
+      clauses.push(`p.name = $${params.length}`);
+    }
+    if (gsm && gsm !== 'null' && gsm !== '') {
+      params.push(Number(gsm));
+      clauses.push(`v.gsm = $${params.length}`);
+    }
+    if (size && size !== 'null' && size !== '') {
+      params.push(size);
+      clauses.push(`v.size = $${params.length}`);
+    }
+    if (color && color !== 'null' && color !== '') {
+      params.push(color);
+      clauses.push(`v.color = $${params.length}`);
+    }
 
-    // Step 1: Find matching products
-    const matchingProducts = await Product.find(productFilter);
-    const productIds = matchingProducts.map(p => p._id);
+    const items = await query(
+      `
+        SELECT i.id
+        FROM inventory i
+        JOIN product_variants v ON v.id = i.variant_id
+        JOIN product_masters p ON p.id = v.product_id
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY p.name ASC, v.gsm ASC NULLS LAST, v.size ASC NULLS LAST
+      `,
+      params
+    );
 
-    console.log('🔍 Search filter:', productFilter);
-    console.log('   Found products:', productIds.length);
-
-    // Step 2: Find inventory items for these products
-    const inventoryFilter = { 
-      isActive: true,
-      productId: { $in: productIds }
-    };
-
-    const results = await Inventory.find(inventoryFilter)
-      .populate('productId')
-      .sort({ 'productId.productName': 1, 'productId.gsm': 1, 'productId.size': 1 });
-
-    console.log('   Found inventory items:', results.length);
+    const ids = items.rows.map((row) => row.id);
+    const results = [];
+    for (const id of ids) {
+      const [item] = await getInventoryItems({ inventoryId: id, isActive: null, limit: 1 });
+      if (item) {
+        results.push(item);
+      }
+    }
 
     res.status(200).json({
       success: true,
       count: results.length,
-      data: results
+      data: results,
     });
   } catch (err) {
     console.error('Search error:', err);
@@ -263,68 +178,41 @@ exports.searchInventory = async (req, res) => {
   }
 };
 
-/**
- * GET /api/inventory/low-stock
- * Get low stock items (below minimumStockLevel)
- */
 exports.getLowStock = async (req, res) => {
   try {
-    const items = await Inventory.find({
-      isActive: true,
-      $expr: { $lt: ['$quantity', '$minimumStockLevel'] }
-    })
-      .populate('productId')
-      .sort({ quantity: 1 });
+    const items = await getInventoryItems({ limit: 1000, isActive: true });
+    const filtered = items
+      .filter((item) => Number(item.quantity) < Number(item.minimumStockLevel || 50))
+      .sort((a, b) => a.quantity - b.quantity);
 
     res.status(200).json({
       success: true,
-      count: items.length,
-      data: items
+      count: filtered.length,
+      data: filtered,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * GET /api/inventory/product/:productName
- * Get all inventory for a specific product
- */
 exports.getByProduct = async (req, res) => {
   try {
-    const { productName } = req.params;
-
-    const items = await Inventory.find({ isActive: true })
-      .populate({
-        path: 'productId',
-        match: { productName: productName }
-      });
-
-    const results = items.filter(item => item.productId !== null);
+    const all = await getInventoryItems({ limit: 1000, isActive: true });
+    const results = all.filter((item) => item.variant?.productId?.name === req.params.productName);
 
     res.status(200).json({
       success: true,
       count: results.length,
-      data: results
+      data: results,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// ============================================================================
-// BULK OPERATIONS
-// ============================================================================
-
-/**
- * POST /api/inventory/bulk-update
- * Update multiple inventory items at once
- * Body: { updates: [{ id, quantity, price }, ...] }
- */
 exports.bulkUpdateInventory = async (req, res) => {
   try {
     const { updates } = req.body;
-
     if (!Array.isArray(updates)) {
       return res.status(400).json({ success: false, error: 'updates must be an array' });
     }
@@ -332,145 +220,123 @@ exports.bulkUpdateInventory = async (req, res) => {
     const results = [];
     for (const update of updates) {
       const { id, ...data } = update;
-      const item = await Inventory.findByIdAndUpdate(
-        id,
-        data,
-        { new: true }
-      ).populate('productId');
-      if (item) results.push(item);
+      await query(
+        `
+          UPDATE inventory
+          SET
+            quantity = COALESCE($1, quantity),
+            price = COALESCE($2, price),
+            updated_at = NOW()
+          WHERE id = $3
+        `,
+        [
+          data.quantity !== undefined ? Number(data.quantity) : null,
+          data.price !== undefined ? Number(data.price) : null,
+          id,
+        ]
+      );
+      const [item] = await getInventoryItems({ inventoryId: id, isActive: null, limit: 1 });
+      if (item) {
+        results.push(item);
+      }
     }
 
     res.status(200).json({
       success: true,
       updated: results.length,
-      data: results
+      data: results,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// ============================================================================
-// STOCK IN/OUT OPERATIONS
-// ============================================================================
-
-/**
- * POST /api/inventory/:inventoryId/stock-in
- * Add quantity to inventory (stock in)
- * Body: { quantity: number, reason?: string }
- */
 exports.addStock = async (req, res) => {
   try {
-    const { inventoryId } = req.params;
     const { quantity, reason } = req.body;
-
-    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Quantity must be a positive number' 
-      });
+    if (!quantity || isNaN(quantity) || parseInt(quantity, 10) < 1) {
+      return res.status(400).json({ success: false, error: 'Quantity must be a positive number' });
     }
 
-    const item = await Inventory.findById(inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
+    const updated = await query(
+      `
+        UPDATE inventory
+        SET quantity = quantity + $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING quantity
+      `,
+      [parseInt(quantity, 10), req.params.inventoryId]
+    );
 
-    if (!item) {
+    if (updated.rowCount === 0) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
-    // Add quantity
-    const addQty = parseInt(quantity);
-    const oldQuantity = item.quantity;
-    item.quantity += addQty;
-    
-    await item.save();
-
-    console.log(`✅ Stock added: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (+${addQty})`);
+    const [item] = await getInventoryItems({ inventoryId: req.params.inventoryId, isActive: null, limit: 1 });
+    const oldQuantity = item.quantity - parseInt(quantity, 10);
 
     res.status(200).json({
       success: true,
-      message: `Added ${addQty} units`,
+      message: `Added ${parseInt(quantity, 10)} units`,
       data: item,
       changeLog: {
         action: 'STOCK_IN',
         oldQuantity,
         newQuantity: item.quantity,
-        change: addQty,
+        change: parseInt(quantity, 10),
         reason: reason || 'Manual stock addition',
-        timestamp: new Date()
-      }
+        timestamp: new Date(),
+      },
     });
   } catch (err) {
-    console.error('Error adding stock:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/**
- * POST /api/inventory/:inventoryId/stock-out
- * Reduce quantity from inventory (stock out)
- * Body: { quantity: number, reason?: string }
- */
 exports.reduceStock = async (req, res) => {
   try {
-    const { inventoryId } = req.params;
     const { quantity, reason } = req.body;
-
-    if (!quantity || isNaN(quantity) || parseInt(quantity) < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Quantity must be a positive number' 
-      });
+    if (!quantity || isNaN(quantity) || parseInt(quantity, 10) < 1) {
+      return res.status(400).json({ success: false, error: 'Quantity must be a positive number' });
     }
 
-    const item = await Inventory.findById(inventoryId)
-      .populate({
-        path: 'variantId',
-        populate: { path: 'productId' }
-      });
-
+    const [item] = await getInventoryItems({ inventoryId: req.params.inventoryId, isActive: null, limit: 1 });
     if (!item) {
       return res.status(404).json({ success: false, error: 'Inventory item not found' });
     }
 
-    const reduceQty = parseInt(quantity);
-
-    // Validate enough stock available
+    const reduceQty = parseInt(quantity, 10);
     if (item.quantity < reduceQty) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Not enough stock. Available: ${item.quantity}, Requested: ${reduceQty}` 
+      return res.status(400).json({
+        success: false,
+        error: `Not enough stock. Available: ${item.quantity}, Requested: ${reduceQty}`,
       });
     }
 
-    // Reduce quantity
-    const oldQuantity = item.quantity;
-    item.quantity -= reduceQty;
-    
-    await item.save();
+    await query(
+      `
+        UPDATE inventory
+        SET quantity = quantity - $1, updated_at = NOW()
+        WHERE id = $2
+      `,
+      [reduceQty, req.params.inventoryId]
+    );
 
-    console.log(`✅ Stock reduced: ${item.variantId.displayName} | Old: ${oldQuantity} → New: ${item.quantity} (-${reduceQty})`);
-
+    const [updatedItem] = await getInventoryItems({ inventoryId: req.params.inventoryId, isActive: null, limit: 1 });
     res.status(200).json({
       success: true,
       message: `Reduced ${reduceQty} units`,
-      data: item,
+      data: updatedItem,
       changeLog: {
         action: 'STOCK_OUT',
-        oldQuantity,
-        newQuantity: item.quantity,
+        oldQuantity: item.quantity,
+        newQuantity: updatedItem.quantity,
         change: -reduceQty,
         reason: reason || 'Manual stock reduction',
-        timestamp: new Date()
-      }
+        timestamp: new Date(),
+      },
     });
   } catch (err) {
-    console.error('Error reducing stock:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
-
-module.exports = exports;

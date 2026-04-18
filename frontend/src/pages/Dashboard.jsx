@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Package, AlertTriangle, ShoppingCart, ArrowUp, ArrowDown, Calendar, BarChart3 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { cn } from '../utils/cn';
 import { saleService, envelopeService, inventoryService } from '../services/api';
 import { Card, CardTitle, CardContent } from '../components/ui/Card';
 import { DailySummary } from '../components/ui/DailySummary';
@@ -60,7 +61,7 @@ export const Dashboard = () => {
       console.log('📊 Fetching comprehensive dashboard data...');
       
       // Fetch CURRENT inventory data from inventory collection
-      const inventoryRes = await inventoryService.getAll({});
+      const inventoryRes = await inventoryService.getAll({ limit: 1000 });
       const inventoryData = Array.isArray(inventoryRes.data) ? inventoryRes.data : inventoryRes.data?.data || [];
       console.log('✅ Current inventory fetched:', inventoryData.length, 'items');
       
@@ -127,6 +128,22 @@ export const Dashboard = () => {
 
   const refreshTime = lastRefresh.toLocaleTimeString();
 
+  // Smart number formatter — abbreviated for cards, full on hover
+  const formatCurrency = (value) => {
+    if (value >= 10000000) return `${(value / 10000000).toFixed(2)} Cr`;
+    if (value >= 100000) return `${(value / 100000).toFixed(2)} L`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)} K`;
+    return value.toLocaleString('en-IN');
+  };
+
+  const formatNumber = (value) => {
+    if (value >= 100000) return `${(value / 100000).toFixed(2)} L`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)} K`;
+    return value.toLocaleString('en-IN');
+  };
+
+  const fullCurrency = (value) => `₹${value.toLocaleString('en-IN')}`;
+
   return (
     <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
@@ -145,99 +162,126 @@ export const Dashboard = () => {
       </div>
 
       {/* Primary Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Today's Sales */}
-        <Card variant="elevated">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Today's Sales</p>
-              <p className="text-3xl font-bold text-gray-900 mt-3">{stats.todaySales}</p>
+        <Card variant="premium" className="flex flex-col justify-between h-full group hover:-translate-y-1">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1 flex-1 min-w-0">
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Today's Sales</p>
+              <p className="text-3xl font-black text-gray-900 mt-2 truncate">
+                {stats.todaySales.toLocaleString()}
+              </p>
               {salesTrend !== 0 && (
-                <div className="flex items-center gap-1 mt-3">
-                  {salesTrend > 0 ? (
-                    <>
-                      <ArrowUp className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-600 font-bold">{salesTrend}%</span>
-                    </>
-                  ) : (
-                    <>
-                      <ArrowDown className="w-4 h-4 text-red-600" />
-                      <span className="text-sm text-red-600 font-bold">{Math.abs(salesTrend)}%</span>
-                    </>
-                  )}
-                  <span className="text-xs text-gray-500">vs yesterday</span>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <div className={cn(
+                    "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold",
+                    salesTrend > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  )}>
+                    {salesTrend > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                    {Math.abs(salesTrend)}%
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">vs yesterday</span>
                 </div>
               )}
             </div>
-            <div className="bg-blue-100 p-4 rounded-xl">
-              <ShoppingCart className="w-8 h-8 text-blue-600" />
+            <div className="bg-blue-50 p-3 rounded-xl group-hover:bg-blue-100 transition-colors shrink-0 ml-2">
+              <ShoppingCart className="w-7 h-7 text-blue-600" />
             </div>
           </div>
         </Card>
 
         {/* Today's Revenue */}
-        <Card variant="elevated">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Today's Revenue</p>
-              <p className="text-3xl font-bold text-gray-900 mt-3">₹{stats.todayRevenue.toLocaleString()}</p>
+        <Card variant="premium" className="flex flex-col justify-between h-full group hover:-translate-y-1">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1 flex-1 min-w-0">
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Today's Revenue</p>
+              <div className="flex items-baseline gap-1 mt-2 overflow-hidden">
+                <span className="text-xl font-bold text-gray-900">₹</span>
+                <span className="text-3xl font-black text-gray-900 truncate">
+                  {stats.todayRevenue.toLocaleString()}
+                </span>
+              </div>
               {revenueTrend !== 0 && (
-                <div className="flex items-center gap-1 mt-3">
-                  {revenueTrend > 0 ? (
-                    <>
-                      <ArrowUp className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-600 font-bold">{revenueTrend}%</span>
-                    </>
-                  ) : (
-                    <>
-                      <ArrowDown className="w-4 h-4 text-red-600" />
-                      <span className="text-sm text-red-600 font-bold">{Math.abs(revenueTrend)}%</span>
-                    </>
-                  )}
-                  <span className="text-xs text-gray-500">vs yesterday</span>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <div className={cn(
+                    "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold",
+                    revenueTrend > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  )}>
+                    {revenueTrend > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                    {Math.abs(revenueTrend)}%
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">vs yesterday</span>
                 </div>
               )}
             </div>
-            <div className="bg-green-100 p-4 rounded-xl">
-              <TrendingUp className="w-8 h-8 text-green-600" />
+            <div className="bg-green-50 p-3 rounded-xl group-hover:bg-green-100 transition-colors shrink-0 ml-2">
+              <TrendingUp className="w-7 h-7 text-green-600" />
             </div>
           </div>
         </Card>
 
         {/* Total Stock Value */}
-        <Card variant="elevated">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm font-semibold uppercase tracking-wider">Stock Value</p>
-              <p className="text-3xl font-bold text-gray-900 mt-3">₹{stats.totalStockValue.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-3 font-medium">{stats.totalStock} units</p>
+        <Card variant="premium" className="flex flex-col justify-between h-full group hover:-translate-y-1">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1 flex-1 min-w-0">
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Stock Value</p>
+              <div
+                title={`Total Stock Value: ${fullCurrency(stats.totalStockValue)}`}
+                className="flex items-baseline gap-1 mt-2 overflow-hidden cursor-help"
+              >
+                <span className="text-xl font-bold text-gray-900">₹</span>
+                <span className="text-3xl font-black text-gray-900">
+                  {formatCurrency(stats.totalStockValue)}
+                </span>
+              </div>
+              <p
+                title={`Total units in stock: ${stats.totalStock.toLocaleString('en-IN')} units`}
+                className="text-xs font-bold text-gray-400 mt-3 bg-gray-50 inline-block px-2 py-1 rounded-lg cursor-help"
+              >
+                {formatNumber(stats.totalStock)} units
+              </p>
             </div>
-            <div className="bg-purple-100 p-4 rounded-xl">
-              <Package className="w-8 h-8 text-purple-600" />
+            <div className="bg-purple-50 p-3 rounded-xl group-hover:bg-purple-100 transition-colors shrink-0 ml-2">
+              <Package className="w-7 h-7 text-purple-600" />
             </div>
           </div>
         </Card>
 
         {/* Low Stock Alert */}
         <Card 
-          variant={stats.lowStockCount > 0 ? "danger" : "elevated"}
-          className={stats.lowStockCount > 0 ? 'cursor-pointer hover:shadow-lg' : 'cursor-pointer hover:shadow-lg'}
+          variant={stats.lowStockCount > 0 ? "danger" : "premium"}
+          className="flex flex-col justify-between h-full group hover:-translate-y-1 cursor-pointer"
           onClick={() => setShowLowStockModal(true)}
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={`text-sm font-semibold uppercase tracking-wider ${stats.lowStockCount > 0 ? 'text-red-700' : 'text-gray-600'}`}>
+          <div className="flex items-start justify-between">
+            <div className="space-y-1 flex-1 min-w-0">
+              <p className={cn(
+                "text-xs font-bold uppercase tracking-widest",
+                stats.lowStockCount > 0 ? "text-red-600" : "text-gray-500"
+              )}>
                 Low Stock
               </p>
-              <p className={`text-3xl font-bold mt-3 ${stats.lowStockCount > 0 ? 'text-red-900' : 'text-gray-900'}`}>
+              <p className={cn(
+                "text-4xl font-black mt-2 truncate",
+                stats.lowStockCount > 0 ? "text-red-900" : "text-gray-900"
+              )}>
                 {stats.lowStockCount}
               </p>
-              <p className={`text-xs font-medium mt-3 ${stats.lowStockCount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                of {stats.totalProducts} products
+              <p className={cn(
+                "text-[10px] font-bold mt-3 inline-block px-2 py-1 rounded-lg uppercase tracking-wide",
+                stats.lowStockCount > 0 ? "bg-red-100 text-red-700" : "bg-gray-50 text-gray-400"
+              )}>
+                of {stats.totalProducts} items
               </p>
             </div>
-            <div className={`p-4 rounded-xl ${stats.lowStockCount > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-              <AlertTriangle className={`w-8 h-8 ${stats.lowStockCount > 0 ? 'text-red-600' : 'text-gray-500'}`} />
+            <div className={cn(
+              "p-3 rounded-xl shrink-0 ml-2 transition-colors",
+              stats.lowStockCount > 0 ? "bg-red-100 group-hover:bg-red-200" : "bg-gray-50 group-hover:bg-gray-100"
+            )}>
+              <AlertTriangle className={cn(
+                "w-7 h-7",
+                stats.lowStockCount > 0 ? "text-red-600" : "text-gray-400"
+              )} />
             </div>
           </div>
         </Card>

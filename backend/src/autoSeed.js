@@ -1,215 +1,176 @@
-/**
- * AUTO-SEEDING UTILITY
- * Runs automatically on server startup if database is empty
- * Populates ProductMaster, ProductVariant, and Inventory collections
- */
-
-const ProductMaster = require('./models/ProductMaster');
-const ProductVariant = require('./models/ProductVariant');
-const Inventory = require('./models/Inventory');
-const PricingTier = require('./models/PricingTier');
-
-// ============ PREDEFINED PRODUCT DATA ============
+const { query, withTransaction } = require('./lib/db');
+const { createId } = require('./lib/ids');
+const {
+  buildVariantDisplayName,
+  buildVariantKey,
+  buildVariantSku,
+} = require('./lib/productUtils');
 
 const ENVELOPE_SIZES = [
-  "6.25x4.25", "7.25x5.25", "7.25x4.25", "9x4", "9.25x4.25",
-  "10.25x4.25", "11x5", "9x6", "12x5", "9x7", "9x6.25",
-  "10x8", "10.25x8.25", "11.25x8.25", "12x9.25", "12x10",
-  "13x10", "15x11", "16x12", "18x14", "20x16"
+  '6.25x4.25', '7.25x5.25', '7.25x4.25', '9x4', '9.25x4.25',
+  '10.25x4.25', '11x5', '9x6', '12x5', '9x7', '9x6.25',
+  '10x8', '10.25x8.25', '11.25x8.25', '12x9.25', '12x10',
+  '13x10', '15x11', '16x12', '18x14', '20x16',
 ];
 
-const MATERIAL_TYPES = [
-  "Maplitho 80 GSM", "Maplitho 90 GSM", "Maplitho 120 GSM",
-  "Buff 80 GSM", "Buff 100 GSM", "Kraft 90 GSM",
-  "Colour 80 GSM", "Cloth Cover", "Vibothi Cover White", "Vibothi Cover Color"
+const MATERIAL_FAMILIES = [
+  { name: 'Maplitho', gsmOptions: [80, 90, 120], hasColor: false, hasGSM: true },
+  { name: 'Buff', gsmOptions: [80, 100], hasColor: false, hasGSM: true },
+  { name: 'Kraft', gsmOptions: [90], hasColor: false, hasGSM: true },
+  { name: 'Colour', gsmOptions: [80], hasColor: false, hasGSM: true },
+  { name: 'Cloth Cover', gsmOptions: [], hasColor: false, hasGSM: false },
+  { name: 'Vibothi Cover', gsmOptions: [], colorOptions: ['White', 'Color'], hasColor: true, hasGSM: false },
 ];
 
-// Helper to extract GSM from material type
-const extractGSM = (materialType) => {
-  const gsmMatch = materialType.match(/(\d+)\s*GSM/i);
-  return gsmMatch ? parseInt(gsmMatch[1], 10) : null;
-};
-
-// Helper to extract color from material type
-const getColor = (materialType) => {
-  if (materialType.includes("Vibothi")) {
-    return materialType.includes("White") ? "White" : "Color";
-  }
-  return null;
-};
-
-// ============ SEED PRODUCT MASTER ============
-
-const seedProductMaster = async () => {
-  console.log('\n📦 Seeding ProductMaster...');
-  
-  const productMaster = await ProductMaster.create({
-    name: 'Envelopes',
-    hasGSM: true,
-    hasSize: true,
-    hasColor: false,
-    description: 'Standard envelopes in various sizes and materials',
-    category: 'Standard Envelope',
-    gsmOptions: [80, 90, 100, 120],
-    sizeOptions: ENVELOPE_SIZES,
-    colorOptions: [],
-    isActive: true
-  });
-  
-  console.log(`✅ ProductMaster created: ${productMaster.name}`);
-  return productMaster;
-};
-
-// ============ SEED PRODUCT VARIANTS ============
-
-const seedProductVariants = async (productMaster) => {
-  console.log(`\n📦 Seeding ProductVariants (${ENVELOPE_SIZES.length * MATERIAL_TYPES.length} combinations)...`);
-  
+async function seedProductsAndVariants() {
   const variants = [];
-  const seen = new Set();
   
-  for (const size of ENVELOPE_SIZES) {
-    for (const materialType of MATERIAL_TYPES) {
-      const gsm = extractGSM(materialType);
-      const color = getColor(materialType);
+  await withTransaction(async (client) => {
+    for (const family of MATERIAL_FAMILIES) {
+      const productId = createId();
       
-      const key = `${size}|${materialType}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      
-      const sku = `ENV-${size}-${gsm || 'N/A'}-${color || 'STD'}`.replace(/[x\s]/g, '-');
-      
-      variants.push({
-        productId: productMaster._id,
-        gsm,
-        size,
-        color: color || null,
-        hasSize: true,
-        hasGSM: true,
-        sku,
-        displayName: `${size} | ${materialType}`,
-        isActive: true
-      });
+      // Insert Product Master
+      await query(
+        `
+          INSERT INTO product_masters (
+            id, name, has_gsm, has_size, has_color, description, category,
+            gsm_options, size_options, color_options, is_active, is_manual_product
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, false)
+        `,
+        [
+          productId,
+          family.name,
+          family.hasGSM,
+          true,
+          family.hasColor,
+          `Standard ${family.name} envelopes`,
+          'Standard Envelope',
+          JSON.stringify(family.gsmOptions || []),
+          JSON.stringify(ENVELOPE_SIZES),
+          JSON.stringify(family.colorOptions || []),
+          true,
+        ],
+        client
+      );
+
+      // Create Variants
+      const gsmList = family.hasGSM ? family.gsmOptions : [null];
+      const colorList = family.hasColor ? family.colorOptions : [null];
+
+      for (const size of ENVELOPE_SIZES) {
+        for (const gsm of gsmList) {
+          for (const color of colorList) {
+            const variantId = createId();
+            const variantData = { gsm, size, color };
+            const displayName = buildVariantDisplayName({ name: family.name, hasGSM: family.hasGSM, hasSize: true, hasColor: family.hasColor }, variantData);
+            const sku = buildVariantSku(family.name, gsm, size, color);
+            const variantKey = buildVariantKey(productId, gsm, size, color);
+
+            await query(
+              `
+                INSERT INTO product_variants (
+                  id, product_id, gsm, size, color, has_size, has_gsm,
+                  sku, display_name, variant_key, is_active
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              `,
+              [
+                variantId,
+                productId,
+                gsm,
+                size,
+                color,
+                true,
+                family.hasGSM,
+                sku,
+                displayName,
+                variantKey,
+                true,
+              ],
+              client
+            );
+
+            variants.push({ _id: variantId, productId });
+          }
+        }
+      }
     }
-  }
-  
-  const inserted = await ProductVariant.insertMany(variants);
-  console.log(`✅ Created ${inserted.length} product variants`);
-  return inserted;
-};
+  });
 
-// ============ SEED INVENTORY ============
+  return variants;
+}
 
-const seedInventory = async (variants) => {
-  console.log(`\n📦 Seeding Inventory (${variants.length} items)...`);
-  
-  const inventoryItems = variants.map(variant => ({
-    variantId: variant._id,
-    quantity: 0,
-    price: 0,
-    minimumStockLevel: 50,
-    isActive: true
-  }));
-  
-  const inserted = await Inventory.insertMany(inventoryItems);
-  console.log(`✅ Created ${inserted.length} inventory records`);
-  return inserted;
-};
+async function seedInventory(variants) {
+  await withTransaction(async (client) => {
+    for (const variant of variants) {
+      await query(
+        `
+          INSERT INTO inventory (id, variant_id, quantity, price, minimum_stock_level, is_active)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [createId(), variant._id, 1000, 5.50, 50, true],
+        client
+      );
+    }
+  });
+}
 
-// ============ SEED PRICING TIERS ============
-
-const seedPricingTiers = async () => {
-  console.log('\n💰 Seeding Pricing Tiers...');
-  
+async function seedPricingTiers() {
   const tiers = [
-    {
-      name: 'Bulk 100 Units',
-      type: 'volume',
-      minQuantity: 100,
-      maxQuantity: 499,
-      discountPercentage: 5,
-      isActive: true
-    },
-    {
-      name: 'Bulk 500 Units',
-      type: 'volume',
-      minQuantity: 500,
-      maxQuantity: 999,
-      discountPercentage: 10,
-      isActive: true
-    },
-    {
-      name: 'Bulk 1000 Units',
-      type: 'volume',
-      minQuantity: 1000,
-      maxQuantity: null,
-      discountPercentage: 15,
-      isActive: true
-    },
-    {
-      name: 'VIP Customer',
-      type: 'customer',
-      customerType: 'vip',
-      discountPercentage: 8,
-      isActive: true
-    },
-    {
-      name: 'Seasonal Summer',
-      type: 'seasonal',
-      season: 'summer',
-      discountPercentage: 12,
-      isActive: true
-    },
-    {
-      name: 'Seasonal Winter',
-      type: 'seasonal',
-      season: 'winter',
-      discountPercentage: 10,
-      isActive: true
-    }
+    { name: 'Bulk 100 Units', type: 'volume', minQuantity: 100, maxQuantity: 499, discountPercentage: 5, isActive: true },
+    { name: 'Bulk 500 Units', type: 'volume', minQuantity: 500, maxQuantity: 999, discountPercentage: 10, isActive: true },
+    { name: 'Bulk 1000 Units', type: 'volume', minQuantity: 1000, maxQuantity: null, discountPercentage: 15, isActive: true },
+    { name: 'VIP Customer', type: 'customer', minQuantity: 0, maxQuantity: null, customerType: 'vip', discountPercentage: 8, isActive: true },
+    { name: 'Seasonal Summer', type: 'seasonal', minQuantity: 0, maxQuantity: null, discountPercentage: 12, isActive: true },
+    { name: 'Seasonal Winter', type: 'seasonal', minQuantity: 0, maxQuantity: null, discountPercentage: 10, isActive: true },
   ];
-  
-  const inserted = await PricingTier.insertMany(tiers);
-  console.log(`✅ Created ${inserted.length} pricing tiers`);
-  return inserted;
-};
 
-// ============ AUTO-SEED ON SERVER STARTUP ============
+  await withTransaction(async (client) => {
+    for (const tier of tiers) {
+      await query(
+        `
+          INSERT INTO pricing_tiers (
+            id, name, description, tier_type, min_quantity, max_quantity,
+            customer_type, discount_type, discount_value, is_active
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (name) DO NOTHING
+        `,
+        [
+          createId(),
+          tier.name,
+          '',
+          tier.type,
+          tier.minQuantity,
+          tier.maxQuantity,
+          tier.customerType || null,
+          'percentage',
+          tier.discountPercentage,
+          tier.isActive,
+        ],
+        client
+      );
+    }
+  });
+}
 
-const autoSeed = async () => {
+async function autoSeed() {
   try {
-    // Check if ProductMaster already exists
-    const productCount = await ProductMaster.countDocuments();
-    
-    if (productCount > 0) {
-      console.log('✅ Database already seeded, skipping auto-seed');
+    const productCount = await query('SELECT COUNT(*)::int AS count FROM product_masters');
+    if (productCount.rows[0].count > 0) {
+      console.log('Database already seeded, skipping auto-seed');
       return;
     }
-    
-    console.log('\n🌱 AUTO-SEEDING DATABASE ON STARTUP...');
-    
-    // Seed ProductMaster
-    const productMaster = await seedProductMaster();
-    
-    // Seed ProductVariants
-    const variants = await seedProductVariants(productMaster);
-    
-    // Seed Inventory
+
+    console.log('Auto-seeding PostgreSQL database');
+    const variants = await seedProductsAndVariants();
     await seedInventory(variants);
-    
-    // Seed Pricing Tiers
     await seedPricingTiers();
-    
-    console.log('\n✅ DATABASE AUTO-SEEDING COMPLETE!');
-    console.log(`   - ProductMaster: 1 record`);
-    console.log(`   - ProductVariants: ${variants.length} records`);
-    console.log(`   - Inventory: ${variants.length} records`);
-    console.log(`   - PricingTiers: 6 records`);
-    
-  } catch (err) {
-    console.error('⚠️  Auto-seeding error:', err.message);
-    // Don't throw - let server continue even if seeding partially fails
+    console.log(`Seeded 1 product master, ${variants.length} variants, ${variants.length} inventory records`);
+  } catch (error) {
+    console.error('Auto-seeding error:', error.message);
   }
-};
+}
 
 module.exports = { autoSeed };

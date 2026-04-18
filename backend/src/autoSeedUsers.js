@@ -1,40 +1,39 @@
-const User = require('./models/User');
+const { query } = require('./lib/db');
+const { createId } = require('./lib/ids');
+const { hashPassword } = require('./lib/auth');
 
-/**
- * Auto-seed default users on startup
- * Creates admin and demo employee accounts
- */
-const autoSeedUsers = async () => {
+async function autoSeedUsers() {
   try {
-    // Check if admin already exists
-    const adminExists = await User.findOne({ email: 'admin@swamy.com' });
-    if (adminExists) {
-      console.log('✓ Admin user already exists');
+    const adminExists = await query(
+      'SELECT id FROM users WHERE email = $1 LIMIT 1',
+      ['admin@swamy.com']
+    );
+
+    if (adminExists.rowCount > 0) {
+      console.log('Admin user already exists');
       return;
     }
 
-    // Create admin
-    await User.create({
-      name: 'Admin User',
-      email: 'admin@swamy.com',
-      password: 'admin@123',
-      role: 'admin',
-      isActive: true
-    });
-    console.log('✓ Admin user created (admin@swamy.com / admin@123)');
+    await query(
+      `
+        INSERT INTO users (id, name, email, password_hash, role, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [createId(), 'Admin User', 'admin@swamy.com', await hashPassword('admin@123'), 'admin', true]
+    );
+    console.log('Admin user created (admin@swamy.com / admin@123)');
 
-    // Create demo employee
-    await User.create({
-      name: 'Employee User',
-      email: 'employee@swamy.com',
-      password: 'employee@123',
-      role: 'employee',
-      isActive: true
-    });
-    console.log('✓ Employee user created (employee@swamy.com / employee@123)');
+    await query(
+      `
+        INSERT INTO users (id, name, email, password_hash, role, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [createId(), 'Employee User', 'employee@swamy.com', await hashPassword('employee@123'), 'employee', true]
+    );
+    console.log('Employee user created (employee@swamy.com / employee@123)');
   } catch (error) {
     console.error('Error auto-seeding users:', error.message);
   }
-};
+}
 
 module.exports = { autoSeedUsers };

@@ -133,7 +133,7 @@ async function testAPI() {
     console.error('\n❌ ERROR:', err.message);
     console.error('\n⚠️  Make sure:');
     console.error('  1. Backend server is running on port 5000');
-    console.error('  2. MongoDB is running and seeded');
+    console.error('  2. PostgreSQL is running and seeded');
     console.error('  3. Run: npm run dev (in backend folder)\n');
     process.exit(1);
   }

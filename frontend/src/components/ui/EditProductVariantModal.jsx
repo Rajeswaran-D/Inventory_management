@@ -207,23 +207,32 @@ export const EditProductVariantModal = ({
             </div>
           )}
 
-          {/* Size Field */}
           {product?.hasSize && (
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Size *
               </label>
-              <select
-                name="size"
-                value={formData.size}
-                onChange={handleFormChange}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select Size...</option>
-                {product.sizeOptions?.map(size => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  name="size"
+                  value={formData.size}
+                  onChange={handleFormChange}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Size...</option>
+                  {product.sizeOptions?.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Or enter custom Size"
+                  value={formData.size}
+                  onChange={handleFormChange}
+                  name="size"
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
           )}
 
@@ -233,17 +242,27 @@ export const EditProductVariantModal = ({
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Color
               </label>
-              <select
-                name="color"
-                value={formData.color}
-                onChange={handleFormChange}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Clear Color</option>
-                {product.colorOptions?.map(color => (
-                  <option key={color} value={color}>{color}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  name="color"
+                  value={formData.color}
+                  onChange={handleFormChange}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Clear Color</option>
+                  {product.colorOptions?.map(color => (
+                    <option key={color} value={color}>{color}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Or enter custom Color"
+                  value={formData.color}
+                  onChange={handleFormChange}
+                  name="color"
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
           )}
 

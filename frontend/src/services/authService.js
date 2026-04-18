@@ -109,11 +109,31 @@ export const authService = {
    */
   restoreSession: () => {
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && token !== 'undefined' && token !== 'null') {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       return true;
     }
     return false;
+  },
+
+  /**
+   * Get current user from server (verify token)
+   */
+  getCurrentUserFromServer: async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return { success: false };
+      
+      const response = await axios.get(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Session expired'
+      };
+    }
   },
 
   /**

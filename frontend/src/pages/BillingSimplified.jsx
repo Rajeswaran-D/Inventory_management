@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ShoppingCart, Trash2, Plus, Minus, FileText, AlertCircle, CheckCircle, Search, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import { inventoryService, saleService } from '../services/api';
 import { Invoice } from '../components/ui/Invoice';
 import '../styles/print.css';
-
-const API = axios.create({
-  baseURL: 'http://localhost:5000/api'
-});
 
 export const Billing = () => {
   // ========================================================================
@@ -20,7 +16,7 @@ export const Billing = () => {
   const fetchInventory = async () => {
     try {
       setIsLoading(true);
-      const res = await API.get('/inventory?limit=1000');
+      const res = await inventoryService.getAll({ limit: 1000 });
       setInventory(res.data.data || []);
     } catch (err) {
       console.error('Error fetching inventory:', err);
@@ -40,7 +36,6 @@ export const Billing = () => {
   const [material, setMaterial] = useState('');
   const [gsm, setGsm] = useState('');
   const [size, setSize] = useState('');
-  const [color, setColor] = useState('');
   const [quantity, setQuantity] = useState('');
 
   // Cart & UI State
@@ -78,16 +73,14 @@ export const Billing = () => {
 
   const shouldShowGSM = activeProduct?.hasGSM || false;
   const shouldShowSize = activeProduct?.hasSize || false;
-  const shouldShowColor = activeProduct?.hasColor || false;
 
   const filteredInventory = useMemo(() => {
     let items = inventory;
     if (material) items = items.filter(i => getProduct(i)?.name === material);
     if (gsm) items = items.filter(i => getVariant(i)?.gsm === parseInt(gsm));
     if (size) items = items.filter(i => getVariant(i)?.size === size);
-    if (color) items = items.filter(i => getVariant(i)?.color === color);
     return items;
-  }, [inventory, material, gsm, size, color]);
+  }, [inventory, material, gsm, size]);
 
   const gsmOptions = useMemo(() => {
     const items = inventory.filter(i => getProduct(i)?.name === material);
@@ -102,20 +95,10 @@ export const Billing = () => {
     return [...new Set(items.map(i => getVariant(i)?.size).filter(Boolean))].sort();
   }, [inventory, material, gsm, shouldShowGSM]);
 
-  const colorOptions = useMemo(() => {
-    const items = inventory.filter(i => 
-      getProduct(i)?.name === material && 
-      (!shouldShowGSM || !gsm || getVariant(i)?.gsm === parseInt(gsm)) &&
-      (!shouldShowSize || !size || getVariant(i)?.size === size)
-    );
-    return [...new Set(items.map(i => getVariant(i)?.color).filter(Boolean))].sort();
-  }, [inventory, material, gsm, size, shouldShowGSM, shouldShowSize]);
-
   // Determine Exact Match
-  const isSelectionComplete = material && 
-    (!shouldShowGSM || gsm) && 
-    (!shouldShowSize || size) && 
-    (!shouldShowColor || color);
+  const isSelectionComplete = material &&
+    (!shouldShowGSM || gsm) &&
+    (!shouldShowSize || size);
 
   const exactMatch = useMemo(() => {
     if (!isSelectionComplete) return null;
@@ -141,10 +124,9 @@ export const Billing = () => {
   // ========================================================================
   // HANDLERS
   // ========================================================================
-  const handleMaterialChange = (val) => { setMaterial(val); setGsm(''); setSize(''); setColor(''); setQuantity(''); };
-  const handleGsmChange = (val) => { setGsm(val); setSize(''); setColor(''); setQuantity(''); };
-  const handleSizeChange = (val) => { setSize(val); setColor(''); setQuantity(''); };
-  const handleColorChange = (val) => { setColor(val); setQuantity(''); };
+  const handleMaterialChange = (val) => { setMaterial(val); setGsm(''); setSize(''); setQuantity(''); };
+  const handleGsmChange = (val) => { setGsm(val); setSize(''); setQuantity(''); };
+  const handleSizeChange = (val) => { setSize(val); setQuantity(''); };
 
   // Quick-add from search results
   const handleQuickSelect = (inv) => {
@@ -312,7 +294,7 @@ export const Billing = () => {
         grandTotal: saleData.grandTotal
       });
 
-      const saleRes = await API.post('/sales', saleData);
+      const saleRes = await saleService.create(saleData);
       
       console.log('✅ Checkout response:', saleRes.data);
 
@@ -473,26 +455,6 @@ export const Billing = () => {
               </div>
             )}
 
-            {/* STEP 4: COLOR */}
-            {shouldShowColor && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                <label className="block text-sm font-semibold mb-2 text-gray-700">
-                  {shouldShowGSM && shouldShowSize ? '4' : (shouldShowGSM || shouldShowSize ? '3' : '2')}. Select Color
-                </label>
-                <select
-                  value={color}
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  disabled={!material || (shouldShowGSM && !gsm) || (shouldShowSize && !size)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none disabled:bg-gray-50 disabled:opacity-50"
-                >
-                  <option value="">Choose Color...</option>
-                  {colorOptions.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            
             {/* EXACT MATCH DISPLAY */}
             {isSelectionComplete && (
               <div className={`p-4 mt-2 rounded-xl border ${exactMatch ? (exactMatch.quantity > 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200') : 'bg-orange-50 border-orange-200'}`}>
