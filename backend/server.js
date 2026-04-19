@@ -19,6 +19,7 @@ const simpleInventoryRoutes = require('./src/routes/simpleInventoryRoutes');
 const pricingTierRoutes = require('./src/routes/pricingTierRoutes');
 const authRoutes = require('./src/routes/authRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
+const systemRoutes = require('./src/routes/systemRoutes');
 
 const { autoSeed } = require('./src/autoSeed');
 const { autoSeedUsers } = require('./src/autoSeedUsers');
@@ -51,6 +52,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/simple-inventory', simpleInventoryRoutes);
 app.use('/api/pricing-tiers', pricingTierRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/system', systemRoutes);
 
 // ✅ Health Check
 app.get('/api/health', async (req, res) => {
@@ -78,13 +80,30 @@ app.get('/api', (req, res) => {
   });
 });
 
-// ❌ 404 Handler
-app.use((req, res) => {
+// ❌ 404 Handler for API
+app.use('/api', (req, res) => {
   res.status(404).json({
-    error: 'Route not found',
+    error: 'API Route not found',
     path: req.path,
   });
 });
+
+// ✅ Serve React Frontend (For Electron/Production Run)
+const path = require('path');
+if (process.env.IS_ELECTRON || process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '../frontend/dist');
+  app.use(express.static(frontendPath));
+  
+  // Catch-all to serve index.html for React Router
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+} else {
+  // ❌ Standard 404 for unknown endpoints in DEV mode
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found', path: req.path });
+  });
+}
 
 // ✅ 🔥 FIXED GLOBAL ERROR HANDLER (IMPORTANT)
 app.use((err, req, res, next) => {
@@ -117,8 +136,12 @@ async function startServer() {
     await autoSeedUsers();
     console.log("✅ Users seeded");
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    return new Promise((resolve, reject) => {
+      const server = app.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        resolve(server);
+      });
+      server.on('error', (err) => reject(err));
     });
 
   } catch (error) {
@@ -127,4 +150,9 @@ async function startServer() {
   }
 }
 
-startServer();
+// Auto-start if run directly. Export if compiled via Electron.
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { startServer, app };

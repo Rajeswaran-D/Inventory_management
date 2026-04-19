@@ -3,14 +3,44 @@
   "version": "1.0.0",
   "description": "Smart Inventory & Billing System - Frontend + Backend",
   "private": true,
+  "main": "main.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "cd frontend && npm run dev",
     "server": "cd backend && npm run dev",
-    "build": "cd frontend && npm run build",
-    "start": "cd backend && npm start",
-    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "seed": "cd backend && npm run seed"
+    "build:frontend": "cd frontend && npm run build",
+    "build:exe": "npm run build:frontend && electron-builder",
+    "build:mac": "npm run build:frontend && electron-builder --mac",
+    "electron:start": "npm run build:frontend && electron .",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "build": {
+    "appId": "com.inventory.billing.system",
+    "productName": "Inventory & Billing OS",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "main.js",
+      "backend/**/*",
+      "frontend/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "backend/build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.business"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "devDependencies": {
     "autoprefixer": "^10.4.27",

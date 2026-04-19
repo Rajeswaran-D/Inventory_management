@@ -9,8 +9,8 @@ let dbInstance = null;
 async function initDbConnection() {
   if (dbInstance) return dbInstance;
   
-  // Store db file in the root of the backend folder
-  const dbPath = path.resolve(__dirname, '../../database.sqlite');
+  // Use environment variable provided by Electron, fallback to local path
+  const dbPath = process.env.DATABASE_PATH || path.resolve(__dirname, '../../database.sqlite');
   
   dbInstance = await open({
     filename: dbPath,

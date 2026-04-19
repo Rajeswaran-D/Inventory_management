@@ -109,7 +109,7 @@ async function seedInventory(variants) {
           INSERT INTO inventory (id, variant_id, quantity, price, minimum_stock_level, is_active)
           VALUES ($1, $2, $3, $4, $5, $6)
         `,
-        [createId(), variant._id, 1000, 5.50, 50, true],
+        [createId(), variant._id, 0, 5.50, 50, true], // SET TO 0 FOR FRESH START
         client
       );
     }
