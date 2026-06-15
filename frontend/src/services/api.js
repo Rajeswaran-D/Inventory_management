@@ -53,6 +53,7 @@ export const saleService = {
     api.get('/sales/export/csv', { params: { filter, startDate, endDate }, responseType: 'blob' }),
   generatePDF: (saleId) => api.get(`/sales/pdf/${saleId}`),
   downloadSales: (params) => api.get('/sales/download', { params, responseType: 'blob' }),
+  getLastBillByPhone: (phone) => api.get(`/sales/by-phone/${encodeURIComponent(phone)}`),
 };
 
 export const customerService = {
@@ -125,6 +126,15 @@ export const pricingTierService = {
 export const reportService = {
   getAnalytics: (params) => api.get('/reports', { params }),
   downloadReport: (params) => api.get('/reports/download', { params, responseType: 'blob' })
+};
+
+export const rawMaterialService = {
+  getAll: () => api.get('/raw-materials'),
+  getById: (id) => api.get(`/raw-materials/${id}`),
+  create: (data) => api.post('/raw-materials', data),
+  update: (id, data) => api.put(`/raw-materials/${id}`, data),
+  remove: (id) => api.delete(`/raw-materials/${id}`),
+  updateStock: (id, stock_quantity) => api.patch(`/raw-materials/${id}/stock`, { stock_quantity }),
 };
 
 export default api;

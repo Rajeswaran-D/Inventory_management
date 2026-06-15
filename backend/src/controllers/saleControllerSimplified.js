@@ -355,3 +355,35 @@ exports.downloadSales = async (req, res) => {
 
 exports.getSalesByCustomer = async (req, res) => res.json({ success: true, data: [] });
 exports.updateBill = async (req, res) => res.status(501).json({ message: "Not implemented" });
+
+// ================= GET LAST BILL BY PHONE =================
+exports.getLastBillByPhone = async (req, res) => {
+  try {
+    const phone = (req.params.phone || '').trim();
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    // Find the most recent sale for this phone number
+    const { all } = require('../lib/db');
+    const rows = await all(
+      `SELECT s.id FROM sales s WHERE s.customer_phone = ? ORDER BY s.date DESC LIMIT 1`,
+      [phone]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'No previous bill found for this phone number.' });
+    }
+
+    const [sale] = await getSales({ saleId: rows[0].id });
+
+    if (!sale) {
+      return res.status(404).json({ success: false, message: 'Bill not found.' });
+    }
+
+    res.json({ success: true, data: sale });
+  } catch (err) {
+    console.error('❌ GET LAST BILL BY PHONE ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
+};

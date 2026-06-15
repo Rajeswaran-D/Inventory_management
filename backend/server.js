@@ -20,6 +20,7 @@ const pricingTierRoutes = require('./src/routes/pricingTierRoutes');
 const authRoutes = require('./src/routes/authRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 const systemRoutes = require('./src/routes/systemRoutes');
+const rawMaterialRoutes = require('./src/routes/rawMaterialRoutes');
 
 const { autoSeed } = require('./src/autoSeed');
 const { autoSeedUsers } = require('./src/autoSeedUsers');
@@ -53,6 +54,7 @@ app.use('/api/simple-inventory', simpleInventoryRoutes);
 app.use('/api/pricing-tiers', pricingTierRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/raw-materials', rawMaterialRoutes);
 
 // ✅ Health Check
 app.get('/api/health', async (req, res) => {

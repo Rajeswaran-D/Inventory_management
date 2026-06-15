@@ -46,6 +46,7 @@ export const Billing = () => {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [isLoadingLastBill, setIsLoadingLastBill] = useState(false);
 
   // ========================================================================
   // SMART FILTERING & ATTRIBUTE RESOLUTION
@@ -205,6 +206,66 @@ export const Billing = () => {
 
     setCart(newCart);
     setQuantity('');
+  };
+
+  // ========================================================================
+  // LOAD LAST BILL BY PHONE
+  // ========================================================================
+  const handleLoadLastBill = async () => {
+    const phone = customerPhone.trim();
+    if (!phone) {
+      toast.error('Enter a phone number first.');
+      return;
+    }
+    try {
+      setIsLoadingLastBill(true);
+      const res = await saleService.getLastBillByPhone(phone);
+      if (!res.data.success || !res.data.data) {
+        toast.error('No previous bill found for this number.');
+        return;
+      }
+      const prevSale = res.data.data;
+
+      // Map previous bill items into cart, using current inventory prices where possible
+      const newCartItems = prevSale.items.map((item, idx) => {
+        // Try to find current inventory price for this variant
+        const invMatch = inventory.find(inv => {
+          const v = getVariant(inv);
+          return v?._id === item.variantId;
+        });
+        const currentPrice = invMatch ? invMatch.price : item.price;
+        const availableStock = invMatch ? invMatch.quantity : 0;
+
+        return {
+          id: `${item.variantId || idx}-loaded-${Date.now()}`,
+          variantId: item.variantId || null,
+          productId: item.productId || null,
+          productName: item.productName || 'Product',
+          gsm: item.gsm || null,
+          size: item.size || null,
+          color: item.color || null,
+          displayName: item.displayName || item.productName || 'Product',
+          quantity: item.quantity,
+          price: currentPrice,
+          itemTotal: item.quantity * currentPrice,
+          availableStock: availableStock,
+        };
+      });
+
+      setCart(newCartItems);
+      // Pre-fill customer info from last bill
+      if (prevSale.customerName && prevSale.customerName !== 'Walk-in Customer') {
+        setCustomerName(prevSale.customerName);
+      }
+      if (prevSale.customerGSTIN) setCustomerGSTIN(prevSale.customerGSTIN);
+
+      toast.success(`✅ Loaded last bill (${prevSale.billNumber}) — ${newCartItems.length} item(s) added to cart. Modify as needed.`);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'No previous bill found for this number.';
+      toast.error(msg);
+    } finally {
+      setIsLoadingLastBill(false);
+    }
   };
 
   const removeFromCart = (cartItemId) => {
@@ -526,13 +587,26 @@ export const Billing = () => {
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Phone</label>
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="+91..."
-                className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="+91..."
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <button
+                  onClick={handleLoadLastBill}
+                  disabled={isLoadingLastBill || !customerPhone.trim()}
+                  title="Load last bill for this phone number"
+                  className="px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 whitespace-nowrap"
+                >
+                  {isLoadingLastBill
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : '🔁 Last Bill'
+                  }
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">GSTIN</label>

@@ -32,6 +32,9 @@ router.get('/download', saleController.downloadSales);
 // ✅ FIXED: move this BEFORE "/:saleId"
 router.get('/customer/:customerId', saleController.getSalesByCustomer);
 
+// ✅ Last bill by phone number
+router.get('/by-phone/:phone', saleController.getLastBillByPhone);
+
 // ============================================================================
 // ✅ GENERIC ROUTES
 // ============================================================================

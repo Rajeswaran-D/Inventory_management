@@ -9,22 +9,23 @@ import {
   Menu,
   X,
   LogOut,
-  User,
-  Users
+  Users,
+  FlaskConical
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { authService } from '../../services/authService';
 import toast from 'react-hot-toast';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/', requiredRole: null },
-  { icon: Package, label: 'Inventory', path: '/inventory', requiredRole: 'admin' },
-  { icon: Package, label: 'Inventory Details', path: '/inventory-details', requiredRole: 'employee' },
-  { icon: Receipt, label: 'Billing', path: '/billing', requiredRole: null },
-  { icon: Receipt, label: 'Bill History', path: '/bill-history', requiredRole: 'admin' },
-  { icon: BarChart3, label: 'Reports', path: '/reports', requiredRole: 'admin' },
-  { icon: Settings, label: 'Product Master', path: '/products', requiredRole: 'admin' },
-  { icon: Users, label: 'User Management', path: '/users', requiredRole: 'admin' },
+  { icon: LayoutDashboard, label: 'Dashboard',        path: '/',                 requiredRole: null },
+  { icon: Package,         label: 'Inventory',        path: '/inventory',        requiredRole: 'admin' },
+  { icon: Package,         label: 'Inventory Details',path: '/inventory-details',requiredRole: 'employee' },
+  { icon: Receipt,         label: 'Billing',          path: '/billing',          requiredRole: null },
+  { icon: Receipt,         label: 'Bill History',     path: '/bill-history',     requiredRole: 'admin' },
+  { icon: FlaskConical,    label: 'Raw Materials',    path: '/raw-materials',    requiredRole: 'admin' },
+  { icon: BarChart3,       label: 'Reports',          path: '/reports',          requiredRole: 'admin' },
+  { icon: Settings,        label: 'Product Master',   path: '/products',         requiredRole: 'admin' },
+  { icon: Users,           label: 'User Management', path: '/users',            requiredRole: 'admin' },
 ];
 
 export const Sidebar = ({ isOpen, toggle, setIsAuthenticated }) => {
@@ -106,10 +107,8 @@ export const Sidebar = ({ isOpen, toggle, setIsAuthenticated }) => {
               {isOpen && <span>{item.label}</span>}
             </NavLink>
           ))}
-        </nav>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-gray-100 bg-gray-50/50 space-y-2">
+          {/* Logout — in the nav list */}
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 font-medium text-sm text-red-600 hover:bg-red-50"
@@ -118,7 +117,10 @@ export const Sidebar = ({ isOpen, toggle, setIsAuthenticated }) => {
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {isOpen && <span>Logout</span>}
           </button>
+        </nav>
 
+        {/* Footer — collapse/expand only */}
+        <div className="p-3 border-t border-gray-100 bg-gray-50/50">
           {!isOpen && (
             <button
               onClick={toggle}

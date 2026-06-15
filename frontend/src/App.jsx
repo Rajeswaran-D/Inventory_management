@@ -14,6 +14,7 @@ import BillHistory from './pages/BillHistory';
 import { Reports } from './pages/Reports';
 import ProductManagement from './pages/ProductManagement';
 import UserManagement from './pages/UserManagement';
+import RawMaterials from './pages/RawMaterials';
 import { authService } from './services/authService';
 
 function App() {
@@ -127,6 +128,11 @@ function App() {
                         <Route path="/users" element={
                           <PrivateRoute requiredRole="admin">
                             <UserManagement />
+                          </PrivateRoute>
+                        } />
+                        <Route path="/raw-materials" element={
+                          <PrivateRoute requiredRole="admin">
+                            <RawMaterials />
                           </PrivateRoute>
                         } />
                         <Route path="*" element={<Navigate to="/" replace />} />

@@ -120,3 +120,13 @@ CREATE TABLE IF NOT EXISTS sale_items (
   item_total REAL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS raw_materials (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  price REAL DEFAULT 0,
+  stock_quantity REAL DEFAULT 0,
+  stock_unit TEXT DEFAULT 'pieces',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
