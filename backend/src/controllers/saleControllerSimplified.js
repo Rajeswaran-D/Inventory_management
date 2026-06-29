@@ -96,12 +96,18 @@ exports.createSale = async (req, res) => {
       for (const item of items) {
 
         await run(
-          `INSERT INTO sale_items (id, sale_id, product_name, quantity, price, item_total)
-           VALUES (?,?,?,?,?,?)`,
+          `INSERT INTO sale_items (id, sale_id, variant_id, product_id, product_name, display_name, gsm, size, color, quantity, price, item_total)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
           [
             createId(),
             saleId,
-            item.productName || item.displayName || 'Product',
+            item.variantId || null,
+            item.productId || null,
+            item.productName || null,
+            item.displayName || null,
+            item.gsm || null,
+            item.size || null,
+            item.color || null,
             item.quantity,
             item.price,
             item.quantity * item.price

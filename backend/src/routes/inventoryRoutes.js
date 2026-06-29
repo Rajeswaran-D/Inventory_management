@@ -6,6 +6,9 @@
 const express = require('express');
 const router = express.Router();
 const inventoryController = require('../controllers/inventoryController');
+const { protect, isAdmin } = require('../middleware/auth');
+
+router.use(protect);
 
 // ============================================================================
 // INVENTORY CRUD
@@ -39,12 +42,12 @@ router.get('/:inventoryId', inventoryController.getInventoryById);
 /**
  * PUT /api/inventory/:inventoryId - Update inventory
  */
-router.put('/:inventoryId', inventoryController.updateInventory);
+router.put('/:inventoryId', isAdmin, inventoryController.updateInventory);
 
 /**
  * DELETE /api/inventory/:inventoryId - Delete (soft delete) inventory item
  */
-router.delete('/:inventoryId', inventoryController.deleteInventory);
+router.delete('/:inventoryId', isAdmin, inventoryController.deleteInventory);
 
 // ============================================================================
 // STOCK IN/OUT OPERATIONS
@@ -54,13 +57,13 @@ router.delete('/:inventoryId', inventoryController.deleteInventory);
  * POST /api/inventory/:inventoryId/stock-in
  * Add quantity to inventory
  */
-router.post('/:inventoryId/stock-in', inventoryController.addStock);
+router.post('/:inventoryId/stock-in', isAdmin, inventoryController.addStock);
 
 /**
  * POST /api/inventory/:inventoryId/stock-out
  * Reduce quantity from inventory
  */
-router.post('/:inventoryId/stock-out', inventoryController.reduceStock);
+router.post('/:inventoryId/stock-out', isAdmin, inventoryController.reduceStock);
 
 // ============================================================================
 // BULK OPERATIONS
@@ -69,6 +72,6 @@ router.post('/:inventoryId/stock-out', inventoryController.reduceStock);
 /**
  * POST /api/inventory/bulk-update - Update multiple items
  */
-router.post('/bulk-update', inventoryController.bulkUpdateInventory);
+router.post('/bulk-update', isAdmin, inventoryController.bulkUpdateInventory);
 
 module.exports = router;

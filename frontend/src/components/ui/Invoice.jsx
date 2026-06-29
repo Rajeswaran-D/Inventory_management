@@ -13,12 +13,15 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Printer, X } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Printer, X, Download } from 'lucide-react';
 import { numberToWords, amountInWords } from '../../utils/numberToWords';
 import { calculateTaxBreakdown } from '../../utils/gstCalculations';
+import { toast } from 'react-hot-toast';
 
 export const Invoice = ({ sale, onClose }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isSavingPDF, setIsSavingPDF] = useState(false);
   const invoiceRef = useRef(null);
 
   if (!sale) return null;
@@ -50,15 +53,60 @@ export const Invoice = ({ sale, onClose }) => {
     : calculateTaxBreakdown(subtotal, 9, 9);
 
   // =========================================================================
-  // PRINT HANDLER
+  // PRINT & PDF HANDLERS
   // =========================================================================
-  const handlePrint = () => {
+  const handlePrint = async () => {
     setIsPrinting(true);
-    setTimeout(() => {
-      window.print();
+    // Let React re-render: remove modal from DOM, keep only #print-invoice
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      if (window.electronAPI && window.electronAPI.printViaPDF) {
+        // Electron: generate invoice as PDF → open in system PDF viewer.
+        // The PDF viewer (Edge, Adobe, Foxit, etc.) shows the invoice with a real
+        // preview and lets the user print with proper layout — bypassing the blank
+        // Windows native dialog that Electron's window.print() produces.
+        const res = await window.electronAPI.printViaPDF();
+        if (res && !res.success && res.error) {
+          toast.error(`Print failed: ${res.error}`);
+        }
+      } else {
+        // Browser: Chromium's built-in print dialog — works perfectly.
+        window.print();
+      }
+    } catch (err) {
+      toast.error(`Printing error: ${err.message}`);
+    } finally {
       setIsPrinting(false);
-    }, 200);
+    }
   };
+
+
+  const handleSavePDF = async () => {
+    setIsSavingPDF(true);
+    setIsPrinting(true); // Remove modal from DOM so printToPDF only captures #print-invoice
+    await new Promise((resolve) => setTimeout(resolve, 150)); // Let React flush re-render
+    try {
+      if (window.electronAPI) {
+        const defaultFilename = `Invoice_${billNumber}.pdf`;
+        const res = await window.electronAPI.savePDF(defaultFilename);
+        if (res && res.success) {
+          toast.success(`PDF saved to: ${res.filePath}`);
+        } else if (res && !res.cancelled && res.error) {
+          toast.error(`Failed to save PDF: ${res.error}`);
+        }
+      } else {
+        // Browser fallback — guide user to use print-to-PDF
+        toast('Opening print dialog — choose "Save as PDF" as the printer.', { icon: '📄' });
+        window.print();
+      }
+    } catch (err) {
+      toast.error(`Error saving PDF: ${err.message}`);
+    } finally {
+      setIsSavingPDF(false);
+      setIsPrinting(false); // Restore modal
+    }
+  };
+
 
   // =========================================================================
   // STYLES — Invoice-specific inline styles for exact rendering
@@ -361,7 +409,7 @@ export const Invoice = ({ sale, onClose }) => {
       {/* MODAL BACKDROP */}
       {!isPrinting && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print" 
           style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
         >
           <div className="bg-white rounded-lg shadow-2xl w-full" style={{ maxWidth: '900px', maxHeight: '92vh', overflow: 'auto' }}>
@@ -373,15 +421,24 @@ export const Invoice = ({ sale, onClose }) => {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-2 px-5 py-2.5 text-white rounded-lg font-semibold transition-all hover:shadow-lg"
-                  style={{ background: '#1e3a5f' }}
+                  disabled={isPrinting || isSavingPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 text-white rounded-lg font-semibold transition-all hover:shadow-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Printer className="w-4 h-4" />
-                  Print / Save PDF
+                  {isPrinting ? 'Printing...' : 'Print Invoice'}
+                </button>
+                <button
+                  onClick={handleSavePDF}
+                  disabled={isPrinting || isSavingPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 text-white rounded-lg font-semibold transition-all hover:shadow-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download className="w-4 h-4" />
+                  {isSavingPDF ? 'Saving PDF...' : 'Save as PDF'}
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                  disabled={isPrinting || isSavingPDF}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
                 >
                   <X className="w-4 h-4" />
                   Close
@@ -399,11 +456,13 @@ export const Invoice = ({ sale, onClose }) => {
         </div>
       )}
 
-      {/* PRINT VIEW — Only rendered during print */}
-      {isPrinting && (
+      {/* PRINT VIEW — Portalled directly to <body> so body > :not(#print-invoice)
+           in print.css can cleanly remove all other layout without blank pages. */}
+      {ReactDOM.createPortal(
         <div className="print-only" id="print-invoice">
           <InvoiceBody />
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

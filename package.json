@@ -9,66 +9,93 @@
     "client": "cd frontend && npm run dev",
     "server": "cd backend && npm run dev",
     "build:frontend": "cd frontend && npm run build",
-    "build:exe": "npm run build:frontend && electron-builder",
-    "build:mac": "npm run build:frontend && electron-builder --mac",
     "electron:start": "npm run build:frontend && electron .",
+    "build:exe": "npm run build:frontend && electron-builder --win",
     "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
   },
   "build": {
     "appId": "com.inventory.billing.system",
     "productName": "Inventory & Billing OS",
+    "copyright": "Copyright © 2025",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
       "main.js",
+      "preload.js",
       "backend/**/*",
-      "frontend/dist/**/*"
+      "frontend/dist/**/*",
+      "!backend/node_modules/**",
+      "!backend/database.sqlite",
+      "!backend/error.log",
+      "!backend/scratch/**",
+      "!backend/.env",
+      "!backend/debug_db.js",
+      "!backend/test-*.js",
+      "!backend/test_*.js"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/schema.sql",
+        "to": "schema.sql"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "backend/build/icon.ico"
-    },
-    "mac": {
       "target": [
-        "dmg",
-        "zip"
-      ],
-      "category": "public.app-category.business"
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Inventory & Billing OS"
     }
   },
   "devDependencies": {
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^2.1.8"
   },
   "dependencies": {
     "axios": "^1.14.0",
-    "clsx": "^2.1.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.0.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.18.2",
     "framer-motion": "^12.38.0",
+    "helmet": "^6.0.1",
+    "jsonwebtoken": "^9.0.0",
     "lucide-react": "^1.7.0",
+    "morgan": "^1.10.0",
+    "nodemailer": "^8.0.5",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.2",
     "recharts": "^3.8.1",
-    "tailwind-merge": "^3.5.0"
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1",
+    "tailwind-merge": "^3.5.0",
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"
   },
-  "keywords": [
-    "inventory",
-    "billing",
-    "management",
-    "envelope"
-  ],
-  "author": "Your Name",
+  "keywords": ["inventory", "billing", "management", "electron", "desktop"],
+  "author": "Swamy Inventory",
   "license": "MIT"
 }

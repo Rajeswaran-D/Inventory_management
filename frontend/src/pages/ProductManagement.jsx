@@ -4,11 +4,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { Plus, Trash2 } from 'lucide-react';
 import '../styles/ProductManagement.css';
 
-const API_BASE = 'http://localhost:5000/api/flexible-products';
+const API_BASE = '/flexible-products';
 
 const VARIANT_TYPES = ['size', 'gsm', 'weight', 'custom'];
 
@@ -52,7 +52,7 @@ export default function ProductManagement() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(API_BASE);
+      const response = await api.get(API_BASE);
       setProducts(response.data.data || []);
       setError('');
     } catch (err) {
@@ -157,7 +157,7 @@ export default function ProductManagement() {
         // Add variant to existing product
         const product = products.find(p => p._id === formData.selectedProduct);
 
-        const response = await axios.post(`${API_BASE}/${formData.selectedProduct}/variants`, {
+        const response = await api.post(`${API_BASE}/${formData.selectedProduct}/variants`, {
           type: variantType,
           value: variantValue,
           price: Number(formData.price),
@@ -174,7 +174,7 @@ export default function ProductManagement() {
         );
       } else {
         // Create new product with variant
-        const response = await axios.post(API_BASE, {
+        const response = await api.post(API_BASE, {
           name: formData.newProductName.trim().toLowerCase(),
           displayName: formData.newProductDisplay.trim(),
           description: formData.newProductDescription,
@@ -206,7 +206,7 @@ export default function ProductManagement() {
     }
 
     try {
-      await axios.delete(`${API_BASE}/${productId}`);
+      await api.delete(`${API_BASE}/${productId}`);
       setProducts(prev => prev.filter(p => p._id !== productId));
       setSuccess('Product deleted successfully');
     } catch (err) {
@@ -221,7 +221,7 @@ export default function ProductManagement() {
     }
 
     try {
-      const response = await axios.delete(`${API_BASE}/${productId}/variants/${variantId}`);
+      const response = await api.delete(`${API_BASE}/${productId}/variants/${variantId}`);
       setProducts(prev =>
         prev.map(p => (p._id === response.data.data._id ? response.data.data : p))
       );

@@ -36,6 +36,7 @@ export const Billing = () => {
   const [material, setMaterial] = useState('');
   const [gsm, setGsm] = useState('');
   const [size, setSize] = useState('');
+  const [color, setColor] = useState('');
   const [quantity, setQuantity] = useState('');
 
   // Cart & UI State
@@ -74,14 +75,16 @@ export const Billing = () => {
 
   const shouldShowGSM = activeProduct?.hasGSM || false;
   const shouldShowSize = activeProduct?.hasSize || false;
+  const shouldShowColor = activeProduct?.hasColor || false;
 
   const filteredInventory = useMemo(() => {
     let items = inventory;
     if (material) items = items.filter(i => getProduct(i)?.name === material);
     if (gsm) items = items.filter(i => getVariant(i)?.gsm === parseInt(gsm));
     if (size) items = items.filter(i => getVariant(i)?.size === size);
+    if (color) items = items.filter(i => getVariant(i)?.color === color);
     return items;
-  }, [inventory, material, gsm, size]);
+  }, [inventory, material, gsm, size, color]);
 
   const gsmOptions = useMemo(() => {
     const items = inventory.filter(i => getProduct(i)?.name === material);
@@ -89,17 +92,27 @@ export const Billing = () => {
   }, [inventory, material]);
 
   const sizeOptions = useMemo(() => {
-    const items = inventory.filter(i => 
-      getProduct(i)?.name === material && 
+    const items = inventory.filter(i =>
+      getProduct(i)?.name === material &&
       (!shouldShowGSM || !gsm || getVariant(i)?.gsm === parseInt(gsm))
     );
     return [...new Set(items.map(i => getVariant(i)?.size).filter(Boolean))].sort();
   }, [inventory, material, gsm, shouldShowGSM]);
 
+  const colorOptions = useMemo(() => {
+    const items = inventory.filter(i =>
+      getProduct(i)?.name === material &&
+      (!shouldShowGSM || !gsm || getVariant(i)?.gsm === parseInt(gsm)) &&
+      (!shouldShowSize || !size || getVariant(i)?.size === size)
+    );
+    return [...new Set(items.map(i => getVariant(i)?.color).filter(Boolean))].sort();
+  }, [inventory, material, gsm, size, shouldShowGSM, shouldShowSize]);
+
   // Determine Exact Match
   const isSelectionComplete = material &&
     (!shouldShowGSM || gsm) &&
-    (!shouldShowSize || size);
+    (!shouldShowSize || size) &&
+    (!shouldShowColor || color);
 
   const exactMatch = useMemo(() => {
     if (!isSelectionComplete) return null;
@@ -117,17 +130,17 @@ export const Billing = () => {
       const product = getProduct(inv);
       const displayName = variant?.displayName || '';
       const productName = product?.name || '';
-      return displayName.toLowerCase().includes(term) || 
-             productName.toLowerCase().includes(term);
+      return displayName.toLowerCase().includes(term) ||
+        productName.toLowerCase().includes(term);
     }).slice(0, 10);
   }, [inventory, searchTerm]);
 
   // ========================================================================
   // HANDLERS
   // ========================================================================
-  const handleMaterialChange = (val) => { setMaterial(val); setGsm(''); setSize(''); setQuantity(''); };
-  const handleGsmChange = (val) => { setGsm(val); setSize(''); setQuantity(''); };
-  const handleSizeChange = (val) => { setSize(val); setQuantity(''); };
+  const handleMaterialChange = (val) => { setMaterial(val); setGsm(''); setSize(''); setColor(''); setQuantity(''); };
+  const handleGsmChange = (val) => { setGsm(val); setSize(''); setColor(''); setQuantity(''); };
+  const handleSizeChange = (val) => { setSize(val); setColor(''); setQuantity(''); };
 
   // Quick-add from search results
   const handleQuickSelect = (inv) => {
@@ -135,10 +148,14 @@ export const Billing = () => {
     const product = getProduct(inv);
     if (!product || !variant) return;
 
+    // Always reset ALL selection fields unconditionally so that stale values
+    // from a previous selection (e.g. a color or GSM the new variant lacks)
+    // are cleared before applying the new variant's attributes.
     setMaterial(product.name);
-    if (variant.gsm) setGsm(String(variant.gsm));
-    if (variant.size) setSize(variant.size);
-    if (variant.color) setColor(variant.color);
+    setGsm(variant.gsm ? String(variant.gsm) : '');
+    setSize(variant.size || '');
+    setColor(variant.color || '');
+    setQuantity('');
     setSearchTerm('');
   };
 
@@ -170,11 +187,11 @@ export const Billing = () => {
 
     const variant = getVariant(exactMatch);
     const product = getProduct(exactMatch);
-    
+
     // Check if item already exists in cart
     const existingIndex = cart.findIndex(c => c.variantId === variant._id);
     let newCart = [...cart];
-    
+
     if (existingIndex >= 0) {
       const existingItem = newCart[existingIndex];
       const potentialQty = existingItem.quantity + qty;
@@ -212,10 +229,22 @@ export const Billing = () => {
   // LOAD LAST BILL BY PHONE
   // ========================================================================
   const handleLoadLastBill = async () => {
-    const phone = customerPhone.trim();
+    let phone = customerPhone.trim();
+
     if (!phone) {
       toast.error('Enter a phone number first.');
       return;
+    }
+
+    // Normalize Indian phone numbers
+    if (!phone.startsWith('+91')) {
+      // Remove any existing spaces, dashes, etc.
+      phone = phone.replace(/\D/g, '');
+
+      // If user entered 10 digits, prepend +91
+      if (phone.length === 10) {
+        phone = `+91${phone}`;
+      }
     }
     try {
       setIsLoadingLastBill(true);
@@ -292,7 +321,7 @@ export const Billing = () => {
 
   const getTotalQuantity = () => cart.reduce((sum, item) => sum + item.quantity, 0);
   const getSubtotal = () => cart.reduce((sum, item) => sum + (item.itemTotal || 0), 0);
-  
+
   // GST Calculations for cart display
   const cartTax = useMemo(() => {
     const subtotal = getSubtotal();
@@ -328,7 +357,7 @@ export const Billing = () => {
 
     try {
       setIsCheckingOut(true);
-      
+
       const saleData = {
         customerName: customerName.trim() || "Walk-in Customer",
         customerPhone: customerPhone.trim(),
@@ -356,7 +385,7 @@ export const Billing = () => {
       });
 
       const saleRes = await saleService.create(saleData);
-      
+
       console.log('✅ Checkout response:', saleRes.data);
 
       if (!saleRes.data.success) {
@@ -376,9 +405,9 @@ export const Billing = () => {
       // Store sale and show invoice
       setLastSale(saleRes.data.data);
       setShowInvoice(true);
-      
+
       toast.success(`✅ Bill ${saleRes.data.data?.billNumber || ''} generated successfully!`);
-      
+
       // Reset form
       setCart([]);
       setCustomerName('');
@@ -388,15 +417,15 @@ export const Billing = () => {
 
     } catch (err) {
       console.error('❌ Checkout error:', err);
-      
+
       // Extract the most useful error message
-      const errorMsg = err.response?.data?.message 
-        || err.response?.data?.error 
-        || err.message 
+      const errorMsg = err.response?.data?.message
+        || err.response?.data?.error
+        || err.message
         || 'Checkout failed. Please try again.';
-      
+
       toast.error(errorMsg);
-      
+
       // Log full details for debugging
       if (err.response) {
         console.error('Response status:', err.response.status);
@@ -416,7 +445,7 @@ export const Billing = () => {
       {/* LEFT: SMART PRODUCT SELECTOR */}
       {/* ===================================================================== */}
       <div className="lg:col-span-2 space-y-6">
-        
+
         {/* SEARCH BAR */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="relative">
@@ -454,8 +483,8 @@ export const Billing = () => {
         {/* PRODUCT SELECTOR */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-6">
-             <h2 className="text-2xl font-bold text-gray-900">Product Selection</h2>
-             {isLoading && <span className="text-sm text-blue-500 flex items-center gap-2"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div> Syncing Inventory...</span>}
+            <h2 className="text-2xl font-bold text-gray-900">Product Selection</h2>
+            {isLoading && <span className="text-sm text-blue-500 flex items-center gap-2"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div> Syncing Inventory...</span>}
           </div>
 
           <div className="grid grid-cols-1 gap-6">
@@ -516,29 +545,49 @@ export const Billing = () => {
               </div>
             )}
 
+            {/* STEP 4: COLOR */}
+            {shouldShowColor && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <label className="block text-sm font-semibold mb-2 text-gray-700">
+                  {(shouldShowGSM && shouldShowSize) ? '4' : (shouldShowGSM || shouldShowSize) ? '3' : '2'}. Select Color
+                </label>
+                <select
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  disabled={!material || (shouldShowGSM && !gsm) || (shouldShowSize && !size)}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none disabled:bg-gray-50 disabled:opacity-50"
+                >
+                  <option value="">Choose Color...</option>
+                  {colorOptions.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* EXACT MATCH DISPLAY */}
             {isSelectionComplete && (
               <div className={`p-4 mt-2 rounded-xl border ${exactMatch ? (exactMatch.quantity > 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200') : 'bg-orange-50 border-orange-200'}`}>
                 {exactMatch ? (
-                    <div>
-                        <div className="flex justify-between items-center mb-2">
-                           <h4 className="font-bold text-gray-900">{getVariant(exactMatch)?.displayName}</h4>
-                           <span className="font-bold text-lg">₹{exactMatch.price}</span>
-                        </div>
-                        {exactMatch.quantity > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                                <CheckCircle className="w-4 h-4" /> Available In Stock: {exactMatch.quantity} units
-                            </span>
-                        ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-semibold">
-                                <AlertCircle className="w-4 h-4" /> Out of Stock
-                            </span>
-                        )}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-bold text-gray-900">{getVariant(exactMatch)?.displayName}</h4>
+                      <span className="font-bold text-lg">₹{exactMatch.price}</span>
                     </div>
+                    {exactMatch.quantity > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
+                        <CheckCircle className="w-4 h-4" /> Available In Stock: {exactMatch.quantity} units
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-semibold">
+                        <AlertCircle className="w-4 h-4" /> Out of Stock
+                      </span>
+                    )}
+                  </div>
                 ) : (
-                    <span className="text-orange-700 font-medium flex items-center gap-2">
-                        <AlertCircle className="w-5 h-5"/> This variant configuration does not exist in inventory.
-                    </span>
+                  <span className="text-orange-700 font-medium flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" /> This variant configuration does not exist in inventory.
+                  </span>
                 )}
               </div>
             )}
@@ -546,17 +595,17 @@ export const Billing = () => {
             {/* STEP 5: QUANTITY & SUBMIT */}
             <div className="pt-4 border-t border-gray-100 flex items-end gap-4 mt-2">
               <div className="flex-1">
-                 <label className="block text-sm font-semibold mb-2 text-gray-700">Quantity</label>
-                 <input
-                   type="number"
-                   value={quantity}
-                   onChange={(e) => setQuantity(e.target.value)}
-                   disabled={!exactMatch || exactMatch.quantity === 0}
-                   placeholder="Enter quantity"
-                   min="1"
-                   max={exactMatch ? exactMatch.quantity : undefined}
-                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-50 disabled:opacity-50 font-medium"
-                 />
+                <label className="block text-sm font-semibold mb-2 text-gray-700">Quantity</label>
+                <input
+                  type="number"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  disabled={!exactMatch || exactMatch.quantity === 0}
+                  placeholder="Enter quantity"
+                  min="1"
+                  max={exactMatch ? exactMatch.quantity : undefined}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-50 disabled:opacity-50 font-medium"
+                />
               </div>
               <button
                 onClick={handleAddToCart}
@@ -572,9 +621,9 @@ export const Billing = () => {
         {/* CUSTOMER INFO */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-             Customer Details <span className="text-sm font-normal text-gray-400">(Optional)</span>
+            Customer Details <span className="text-sm font-normal text-gray-400">(Optional)</span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
               <label className="block text-sm text-gray-600 mb-1">Name</label>
               <input
@@ -587,26 +636,27 @@ export const Billing = () => {
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Phone</label>
-              <div className="flex gap-2">
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="+91..."
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <button
-                  onClick={handleLoadLastBill}
-                  disabled={isLoadingLastBill || !customerPhone.trim()}
-                  title="Load last bill for this phone number"
-                  className="px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 whitespace-nowrap"
-                >
-                  {isLoadingLastBill
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : '🔁 Last Bill'
-                  }
-                </button>
-              </div>
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="+91..."
+                className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <button
+                onClick={handleLoadLastBill}
+                disabled={isLoadingLastBill || !customerPhone.trim()}
+                title="Load last bill for this phone number"
+                className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 h-[38px]"
+              >
+                {isLoadingLastBill ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
+                ) : (
+                  '🔁 Load Last Bill'
+                )}
+              </button>
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">GSTIN</label>
@@ -729,21 +779,21 @@ export const Billing = () => {
             className="w-full py-4 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-none active:bg-green-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2"
           >
             {isCheckingOut ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+              <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
             ) : (
-                <><FileText size={20} /> Generate Final Bill</>
+              <><FileText size={20} /> Generate Final Bill</>
             )}
           </button>
         </div>
       </div>
 
       {showInvoice && lastSale && (
-        <Invoice 
-          sale={lastSale} 
+        <Invoice
+          sale={lastSale}
           onClose={() => {
             setShowInvoice(false);
             setLastSale(null);
-          }} 
+          }}
         />
       )}
     </div>

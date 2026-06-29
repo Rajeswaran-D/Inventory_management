@@ -114,10 +114,10 @@ export const LowStockModal = ({ isOpen, onClose, onRefresh }) => {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                              {item.size}
+                              {item.variant?.displayName || item.variant?.size || 'N/A'}
                             </h4>
                             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                              {item.materialType} • GSM {item.gsm}
+                              {item.variant?.productId?.name || 'N/A'} {item.variant?.gsm ? `• GSM ${item.variant.gsm}` : ''}
                             </p>
                             <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
                               Price: ₹{item.price}

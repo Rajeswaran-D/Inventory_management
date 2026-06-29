@@ -40,7 +40,7 @@ const Inventory = () => {
   const [browseSearch, setBrowseSearch] = useState('');
   const [allVariants, setAllVariants] = useState([]);
   const [loadingVariants, setLoadingVariants] = useState(false);
-  
+
 
   // Apply search filter
   const applySearch = (data, query) => {
@@ -72,21 +72,21 @@ const Inventory = () => {
       console.log('🔄 Fetching inventory...');
       setLoading(true);
       setError(null);
-      
+
       const res = await inventoryService.getAll({ limit: 1000 });
       let productsData = Array.isArray(res.data) ? res.data : res.data?.data || [];
-      
+
       // Log data structure for debugging
       console.log('📦 Raw inventory data:', productsData[0]);
-      
+
       setProducts(productsData);
       applySearch(productsData, searchQuery);
-      
+
       // Only show toast on initial load OR if explicitly requested
-      if(!showProductsOnce.current){
+      if (!showProductsOnce.current) {
         toast.info(`✅ Loaded ${productsData.length} products`);
         showProductsOnce.current = true;
-        setHasLoadedOnce(true); 
+        setHasLoadedOnce(true);
       }
     } catch (err) {
       console.error('❌ Error fetching inventory:', err);
@@ -114,7 +114,7 @@ const Inventory = () => {
   // Auto-refresh setup - SEPARATE from initial load
   useEffect(() => {
     if (!autoRefreshEnabled || !hasLoadedOnce) return;
-    
+
     console.log('🔄 Auto-refresh enabled - setting 30s interval');
     const interval = setInterval(() => {
       console.log('⏰ Auto-refreshing inventory...');
@@ -188,20 +188,20 @@ const Inventory = () => {
           color: variant.color,
           price: variant.price || 0
         });
-        
+
         toast.success(`Inventory initialized for ${variant.displayName || 'variant'}!`);
         setShowAddProductModal(false);
-        
+
         // Refresh to get the newly created inventory item
         await fetchInventory(false);
-        
+
         // Find it in the newly returned data (simulate)
         // Set a slight timeout to ensure state catches up if we just rely on fetchInventory
         setTimeout(() => {
           // You could find the item from res.data.variant.inventoryId if needed,
           // but user can just see it in the list now!
         }, 100);
-        
+
       } catch (err) {
         toast.error(err?.response?.data?.message || 'Failed to initialize inventory for this variant.');
       } finally {
@@ -266,7 +266,7 @@ const Inventory = () => {
   // Update product
   const handleUpdateProduct = async () => {
     if (!selectedProduct) return;
-    
+
     if (updateForm.quantity < 0 || updateForm.price < 0) {
       toast.error('Quantity and Price cannot be negative');
       return;
@@ -291,29 +291,29 @@ const Inventory = () => {
   // Delete product
   const handleDeleteProduct = async () => {
     if (!selectedProduct) return;
-  
+
     try {
       setIsSubmitting(true);
-  
+
       await inventoryService.delete(selectedProduct._id);
-  
+
       const variantId =
         selectedProduct.variant?._id ||
         selectedProduct.variantId?._id ||
         selectedProduct.variantId;
-  
+
       if (variantId) {
         await productService.deleteVariant(variantId);
       }
-  
+
       toast.success('✅ Deleted permanently');
-  
+
       setShowDeleteConfirm(false);
       setSelectedProduct(null);
-  
+
       // Refresh UI
       await fetchInventory(true);
-  
+
     } catch (err) {
       console.error('Error deleting:', err);
       toast.error(err?.response?.data?.message || 'Failed to delete');
@@ -335,8 +335,11 @@ const Inventory = () => {
     <div className="space-y-6 p-6 bg-gradient-to-br from-gray-50 via-white to-gray-50 min-h-screen">
       {/* Header */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
-          📦 Inventory Management
+        <h1 className="text-4xl font-bold">
+          <span className="mr-2">📦</span>
+          <span className="bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">
+            Inventory Management
+          </span>
         </h1>
         <p className="text-gray-600 mt-2 font-medium">
           Manage products and stock levels efficiently
@@ -875,9 +878,8 @@ const Inventory = () => {
                                   {v.productId?.name}{v.gsm ? ` · ${v.gsm} GSM` : ''}{v.size ? ` · ${v.size}` : ''}
                                 </p>
                               </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
-                                inInventory ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                              }`}>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${inInventory ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
                                 {inInventory ? 'In Stock' : 'Not Loaded'}
                               </span>
                             </button>
@@ -894,8 +896,8 @@ const Inventory = () => {
                           (v.size || '').toLowerCase().includes(q)
                         );
                       }).length === 0 && (
-                        <p className="text-center text-gray-400 py-6 text-sm">No variants match your search</p>
-                      )}
+                          <p className="text-center text-gray-400 py-6 text-sm">No variants match your search</p>
+                        )}
                     </div>
                   )}
                   <button onClick={() => setAddStep(0)} className="w-full py-2 rounded-lg border border-gray-300 text-gray-600 font-medium hover:bg-gray-50 text-sm">← Back</button>

@@ -24,8 +24,10 @@ function App() {
 
   // Initialize app state
   useEffect(() => {
-    // We intentionally skip restoreSession here to force manual login 
-    // as per user request to always see the login page first.
+    const hasToken = authService.restoreSession();
+    if (hasToken) {
+      setIsAuthenticated(true);
+    }
     setIsLoading(false);
   }, []);
 

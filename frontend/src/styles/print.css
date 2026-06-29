@@ -25,39 +25,24 @@
     margin: 0;
   }
 
-  /* Hide everything first */
-  body > * {
+  /* Hide EVERYTHING in body except #print-invoice.
+     This works because createPortal renders #print-invoice as a direct child
+     of <body>, so "body > :not(#print-invoice)" targets every other sibling —
+     including #root and the entire app — with display:none.
+     No layout space is preserved, so no blank second page. */
+  body > :not(#print-invoice) {
     display: none !important;
   }
 
-  /* Show only the print invoice */
+  /* Show the invoice */
   #print-invoice {
     display: block !important;
-    position: fixed;
-    top: 0;
-    left: 0;
+    position: static;
     width: 100%;
-    height: 100%;
-    z-index: 99999;
-    background: white;
   }
 
   .print-only {
     display: block !important;
-  }
-
-  /* Hide all UI elements */
-  nav,
-  button,
-  .sidebar,
-  .toolbar,
-  .modal-overlay,
-  .fixed,
-  .sticky,
-  .no-print,
-  [class*="shadow"],
-  .Toastify {
-    display: none !important;
   }
 
   /* Invoice page styling */
@@ -70,7 +55,6 @@
     font-family: 'Segoe UI', 'Arial', sans-serif !important;
     color: #000 !important;
     background: #fff !important;
-    page-break-after: always;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

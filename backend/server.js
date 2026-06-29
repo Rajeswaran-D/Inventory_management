@@ -1,5 +1,9 @@
 
-require('dotenv').config();
+// In Electron, env vars are set directly by main.js — dotenv not needed
+if (!process.env.IS_ELECTRON) {
+  try { require('dotenv').config(); } catch(e) { /* optional in packaged build */ }
+}
+
 
 const express = require('express');
 const cors = require('cors');
@@ -30,8 +34,15 @@ const PORT = process.env.PORT || 5000;
 
 // ✅ Middleware
 app.use(cors());
-app.use(helmet());
-app.use(morgan('dev'));
+// Relax helmet CSP so Electron renderer can load localhost resources
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+// Only log requests in development mode
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS pricing_tiers (
   customer_type TEXT,
   discount_type TEXT,
   discount_value REAL,
+  markup REAL DEFAULT 0,
+  start_date TEXT,
+  end_date TEXT,
+  priority INTEGER DEFAULT 100,
+  applied_count INTEGER DEFAULT 0,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -129,4 +134,41 @@ CREATE TABLE IF NOT EXISTS raw_materials (
   stock_unit TEXT DEFAULT 'pieces',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS envelopes (
+  id TEXT PRIMARY KEY,
+  size TEXT,
+  material_type TEXT,
+  gsm INTEGER,
+  color TEXT,
+  price REAL DEFAULT 0,
+  quantity INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_transactions (
+  id TEXT PRIMARY KEY,
+  variant_id TEXT REFERENCES product_variants(id) ON DELETE CASCADE,
+  product_id TEXT REFERENCES product_masters(id) ON DELETE CASCADE,
+  envelope_id TEXT REFERENCES envelopes(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  quantity REAL NOT NULL,
+  reference TEXT,
+  reason TEXT,
+  date TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS pricing_tier_products (
+  tier_id TEXT REFERENCES pricing_tiers(id) ON DELETE CASCADE,
+  product_id TEXT REFERENCES product_masters(id) ON DELETE CASCADE,
+  PRIMARY KEY (tier_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS pricing_tier_variants (
+  tier_id TEXT REFERENCES pricing_tiers(id) ON DELETE CASCADE,
+  variant_id TEXT REFERENCES product_variants(id) ON DELETE CASCADE,
+  PRIMARY KEY (tier_id, variant_id)
 );

@@ -2,64 +2,65 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const inventoryController = require('../controllers/inventoryController');
+const { protect, isAdmin } = require('../middleware/auth');
 
 // ===== NEW SIMPLIFIED SYSTEM ROUTES =====
 
 // Get fixed product definitions
-router.get('/definitions', inventoryController.getProductDefinitions);
+router.get('/definitions', protect, inventoryController.getProductDefinitions);
 
 // Get options for a product
-router.get('/options/:productId', inventoryController.getProductOptions);
+router.get('/options/:productId', protect, inventoryController.getProductOptions);
 
 // ===== PRODUCT MASTER ROUTES =====
 
 // Get all products
-router.get('/master', productController.getAllProducts);
+router.get('/master', protect, productController.getAllProducts);
 
 // Get product by ID (with variants)
-router.get('/master/:id', productController.getProductById);
+router.get('/master/:id', protect, productController.getProductById);
 
 // Create new product
-router.post('/master', productController.createProduct);
+router.post('/master', protect, isAdmin, productController.createProduct);
 
 // Update product (add options)
-router.put('/master/:id', productController.updateProduct);
+router.put('/master/:id', protect, isAdmin, productController.updateProduct);
 
 // Delete product (soft delete)
-router.delete('/master/:id', productController.deleteProduct);
+router.delete('/master/:id', protect, isAdmin, productController.deleteProduct);
 
 // ===== PRODUCT VARIANT ROUTES =====
 
 // Get all variants
-router.get('/variants', productController.getAllVariants);
+router.get('/variants', protect, productController.getAllVariants);
 
 // Get variant by ID
-router.get('/variants/:id', productController.getVariantById);
+router.get('/variants/:id', protect, productController.getVariantById);
 
 // Create new variant
-router.post('/variants', productController.createVariant);
+router.post('/variants', protect, isAdmin, productController.createVariant);
 
 // Update variant
-router.put('/variants/:id', productController.updateVariant);
+router.put('/variants/:id', protect, isAdmin, productController.updateVariant);
 
 // Delete variant (with inventory cleanup)
-router.delete('/variants/:id', productController.deleteVariant);
+router.delete('/variants/:id', protect, isAdmin, productController.deleteVariant);
 
 // ===== DROPDOWN DATA ROUTES (Dynamic UI Support) =====
 
 // Get product configuration (for conditional field rendering)
-router.get('/config', productController.getProductConfiguration);
+router.get('/config', protect, productController.getProductConfiguration);
 
 // Get material options for dropdown
-router.get('/dropdowns/materials', productController.getMaterialOptions);
+router.get('/dropdowns/materials', protect, productController.getMaterialOptions);
 
 // Get GSM options for a product
-router.get('/dropdowns/gsm', productController.getGSMOptions);
+router.get('/dropdowns/gsm', protect, productController.getGSMOptions);
 
 // Get size options for a product
-router.get('/dropdowns/sizes', productController.getSizeOptions);
+router.get('/dropdowns/sizes', protect, productController.getSizeOptions);
 
 // Get color options for a product
-router.get('/dropdowns/colors', productController.getColorOptions);
+router.get('/dropdowns/colors', protect, productController.getColorOptions);
 
 module.exports = router;

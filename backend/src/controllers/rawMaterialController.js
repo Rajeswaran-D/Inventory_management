@@ -78,8 +78,8 @@ exports.update = async (req, res) => {
        WHERE id = ?`,
       [
         name.trim(),
-        parseFloat(price) || 0,
-        parseFloat(stock_quantity) !== undefined ? parseFloat(stock_quantity) : existing.stock_quantity,
+        price !== undefined && price !== null ? parseFloat(price) : existing.price,
+        stock_quantity !== undefined && stock_quantity !== null ? parseFloat(stock_quantity) : existing.stock_quantity,
         (stock_unit || existing.stock_unit || 'pieces').trim(),
         req.params.id,
       ]

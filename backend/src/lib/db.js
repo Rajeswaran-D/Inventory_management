@@ -109,11 +109,38 @@ async function withTransaction(work) {
 async function initDb() {
   const db = await initDbConnection();
   try {
-    const schemaPath = path.resolve(__dirname, '../../schema.sql');
+    // In packaged Electron, main.js sets SCHEMA_PATH to process.resourcesPath/schema.sql
+    // so the file is outside the asar archive and readable at runtime.
+    const schemaPath = process.env.SCHEMA_PATH || path.resolve(__dirname, '../../schema.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-    
+
     await db.exec(schemaSql);
     console.log("✅ DB Init: Connected to SQLite and verified tables.");
+
+    // Ensure all pricing_tiers columns exist
+    const columnsInfo = await db.all("PRAGMA table_info(pricing_tiers)");
+    const columnNames = columnsInfo.map(c => c.name);
+    
+    if (!columnNames.includes('markup')) {
+      await db.exec("ALTER TABLE pricing_tiers ADD COLUMN markup REAL DEFAULT 0;");
+      console.log("🛠️ Migrated pricing_tiers: added markup column");
+    }
+    if (!columnNames.includes('start_date')) {
+      await db.exec("ALTER TABLE pricing_tiers ADD COLUMN start_date TEXT;");
+      console.log("🛠️ Migrated pricing_tiers: added start_date column");
+    }
+    if (!columnNames.includes('end_date')) {
+      await db.exec("ALTER TABLE pricing_tiers ADD COLUMN end_date TEXT;");
+      console.log("🛠️ Migrated pricing_tiers: added end_date column");
+    }
+    if (!columnNames.includes('priority')) {
+      await db.exec("ALTER TABLE pricing_tiers ADD COLUMN priority INTEGER DEFAULT 100;");
+      console.log("🛠️ Migrated pricing_tiers: added priority column");
+    }
+    if (!columnNames.includes('applied_count')) {
+      await db.exec("ALTER TABLE pricing_tiers ADD COLUMN applied_count INTEGER DEFAULT 0;");
+      console.log("🛠️ Migrated pricing_tiers: added applied_count column");
+    }
   } catch (err) {
     console.error("❌ DB Init Error:", err.message);
     throw err;

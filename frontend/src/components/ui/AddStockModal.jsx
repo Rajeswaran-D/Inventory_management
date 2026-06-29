@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { envelopeService, stockService } from '../../services/api';
-import { ProductSelector3Step } from './ProductSelector3Step';
+import { ProductSelector } from './ProductSelector';
 import { formatProductName } from '../../utils/productData';
 
 export const AddStockModal = ({ isOpen, onClose, onStockAdded }) => {
@@ -43,7 +43,7 @@ export const AddStockModal = ({ isOpen, onClose, onStockAdded }) => {
     const matching = products.find((p) => {
       return (
         p.size === selected.size &&
-        p.materialType === selected.material &&
+        p.materialType === selected.materialType &&
         (selected.gsm === null ? p.gsm === null : p.gsm === selected.gsm) &&
         (selected.color === null ? p.color === null : p.color === selected.color)
       );
@@ -141,9 +141,8 @@ export const AddStockModal = ({ isOpen, onClose, onStockAdded }) => {
                 Loading products...
               </div>
             ) : (
-              <ProductSelector3Step
-                onSelect={handleProductSelect}
-                showSummary={true}
+              <ProductSelector
+                onProductSelect={handleProductSelect}
                 label=""
               />
             )}

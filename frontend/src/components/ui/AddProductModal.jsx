@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { envelopeService } from '../../services/api';
-import { ProductSelector3Step } from './ProductSelector3Step';
+import { ProductSelector } from './ProductSelector';
 
 
 export const AddProductModal = ({ isOpen, onClose, onProductAdded }) => {
@@ -104,9 +104,8 @@ export const AddProductModal = ({ isOpen, onClose, onProductAdded }) => {
             <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
               Step 1: Select Product
             </h3>
-            <ProductSelector3Step
-              onSelect={handleProductSelect}
-              showSummary={true}
+            <ProductSelector
+              onProductSelect={handleProductSelect}
               label=""
             />
           </div>

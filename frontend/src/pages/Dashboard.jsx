@@ -13,11 +13,11 @@ export const Dashboard = () => {
     // Today metrics
     todaySales: 0,
     todayRevenue: 0,
-    
+
     // Comparison (yesterday)
     previousSales: 0,
     previousRevenue: 0,
-    
+
     // Weekly/Monthly/Yearly
     weeklySales: 0,
     weeklyRevenue: 0,
@@ -25,7 +25,7 @@ export const Dashboard = () => {
     monthlyRevenue: 0,
     yearlySales: 0,
     yearlyRevenue: 0,
-    
+
     // Inventory
     totalProducts: 0,
     totalStock: 0,
@@ -39,7 +39,7 @@ export const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    
+
     // Subscribe to real-time updates
     const unsubscribe = realTimeSyncService.subscribe('dashboard', (data) => {
       if (data?.type === 'refresh') {
@@ -59,22 +59,22 @@ export const Dashboard = () => {
     setLoading(true);
     try {
       console.log('📊 Fetching comprehensive dashboard data...');
-      
+
       // Fetch CURRENT inventory data from inventory collection
       const inventoryRes = await inventoryService.getAll({ limit: 1000 });
       const inventoryData = Array.isArray(inventoryRes.data) ? inventoryRes.data : inventoryRes.data?.data || [];
       console.log('✅ Current inventory fetched:', inventoryData.length, 'items');
-      
+
       // Calculate current inventory statistics from ACTUAL inventory data
       const totalProducts = inventoryData.length;
       const totalStock = inventoryData.reduce((sum, item) => sum + (item.quantity || 0), 0);
       const totalStockValue = inventoryData.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
       const lowStockCount = inventoryData.filter(item => (item.quantity || 0) < (item.minimumStockLevel || 50)).length;
-      
+
       // Fetch sales reports for revenue data
       const reportsRes = await saleService.getReports();
       const data = reportsRes.data?.data || {};
-      
+
       setStats({
         // Sales metrics from reports
         todaySales: data.today?.salesCount || 0,
@@ -87,17 +87,17 @@ export const Dashboard = () => {
         monthlyRevenue: data.monthly?.revenue || 0,
         yearlySales: data.yearly?.salesCount || 0,
         yearlyRevenue: data.yearly?.revenue || 0,
-        
+
         // Current inventory data from actual inventory collection
         totalProducts,
         totalStock,
         totalStockValue,
         lowStockCount
       });
-      
+
       console.log('📈 Dashboard stats updated');
       setLastRefresh(new Date());
-      
+
     } catch (err) {
       console.error('❌ Error fetching dashboard data:', err);
       toast.error('Failed to load dashboard data');
@@ -118,11 +118,11 @@ export const Dashboard = () => {
   }
 
   // Calculate trend percentages
-  const revenueTrend = stats.previousRevenue > 0 
+  const revenueTrend = stats.previousRevenue > 0
     ? (((stats.todayRevenue - stats.previousRevenue) / stats.previousRevenue) * 100).toFixed(1)
     : 0;
 
-  const salesTrend = stats.previousSales > 0 
+  const salesTrend = stats.previousSales > 0
     ? (((stats.todaySales - stats.previousSales) / stats.previousSales) * 100).toFixed(1)
     : 0;
 
@@ -149,7 +149,7 @@ export const Dashboard = () => {
       {/* Header */}
       <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-700 bg-clip-text text-transparent">📊 Dashboard</h1>
+          <h1 className="text-4xl font-bold text-green-700">📊 Dashboard</h1>
           <p className="text-gray-600 mt-2 font-medium">Real-time business analytics and insights</p>
           <p className="text-xs font-medium text-gray-400 mt-2">⏰ Last updated: {refreshTime}</p>
         </div>
@@ -248,7 +248,7 @@ export const Dashboard = () => {
         </Card>
 
         {/* Low Stock Alert */}
-        <Card 
+        <Card
           variant={stats.lowStockCount > 0 ? "danger" : "premium"}
           className="flex flex-col justify-between h-full group hover:-translate-y-1 cursor-pointer"
           onClick={() => setShowLowStockModal(true)}
@@ -357,12 +357,12 @@ export const Dashboard = () => {
       </div>
 
       {/* Daily Summary for charts */}
-      <DailySummary refreshTrigger={refreshTrigger} />
+      {/* <DailySummary refreshTrigger={refreshTrigger} /> */}
 
       {/* Low Stock Modal */}
-      <LowStockModal 
-        isOpen={showLowStockModal} 
-        onClose={() => setShowLowStockModal(false)} 
+      <LowStockModal
+        isOpen={showLowStockModal}
+        onClose={() => setShowLowStockModal(false)}
       />
     </div>
   );
